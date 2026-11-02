@@ -68,7 +68,7 @@ Build can continue into an optional transfer check that changes the situation wh
 
 ### Skills and adapters
 
-The shared method lives in `shared/coaching-reference.md`. Directories under `adapters/` translate it into each client's conventions. `scripts/setup.mjs` installs the right adapter without overwriting existing configuration. The DeepSeek Harness adapter uses its native `.dsh/skills` discovery and supplies a profile patch that connects the local MCP process through `@deepseek-ai/dsh-mcp-client`.
+The shared method lives in `shared/coaching-reference.md`. Directories under `adapters/` translate it into each client's conventions. `scripts/setup.mjs` installs the right adapter without overwriting existing configuration. The DeepSeek Harness adapter uses its native `.dsh/skills` discovery and a workspace `.dsh/mcp.json` read by the `dsh-workspace-mcp` plugin, so each learning folder gets its own bridge process and local state. A `--patch` mode remains for CLI launches without the plugin.
 
 ### MCP bridge
 

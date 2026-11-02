@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { listDueReviews, loadLearningState, recordCheckpointAssessment, saveLearningState } from "../src/progress.mjs";
@@ -131,4 +131,28 @@ test("tracks transfer evidence, confidence, hints, and delayed review", async ()
   const reviews = await listDueReviews(root, { now: "2100-01-01T00:00:00.000Z" });
   assert.equal(reviews.due.length, 1);
   assert.equal(reviews.due[0].concept, "Isolation trade-offs");
+});
+
+test("infers due reviews for legacy evidence without reviewAfter", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-progress-"));
+  await saveLearningState(root, {
+    sessionId: "legacy",
+    topic: "Legacy",
+    goal: "Review old evidence",
+    phase: "review",
+    nextStep: "Review legacy concepts",
+  });
+
+  const path = join(root, ".concept-loom/sessions/legacy.json");
+  const state = JSON.parse(await readFile(path, "utf8"));
+  state.updatedAt = "2026-01-01T00:00:00.000Z";
+  state.evidence = {
+    "old-concept": { attempts: 1, consecutiveSuccesses: 1, lastOutcome: "accurate" },
+  };
+  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+
+  const reviews = await listDueReviews(root, { now: "2026-01-03T00:00:00.000Z" });
+  assert.equal(reviews.due.length, 1);
+  assert.equal(reviews.due[0].concept, "old-concept");
+  assert.equal(reviews.due[0].inferred, true);
 });

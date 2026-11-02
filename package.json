@@ -5,10 +5,13 @@
   "type": "module",
   "private": true,
   "bin": {
-    "concept-loom": "src/bridge.mjs"
+    "concept-loom": "src/bridge.mjs",
+    "concept-loom-setup": "scripts/setup.mjs"
   },
   "scripts": {
     "start": "node src/bridge.mjs",
+    "setup": "node scripts/setup.mjs",
+    "init": "node scripts/setup.mjs deepseek-harness",
     "test": "node --test",
     "check": "node --check src/bridge.mjs && node --check src/checkpoints.mjs && node --check src/notebook.mjs && node --check src/diagrams.mjs && node --check src/progress.mjs && node --check scripts/setup.mjs",
     "verify": "npm run check && npm test"

@@ -154,14 +154,21 @@ export async function listDueReviews(baseDirectory, input = {}) {
   for (const summary of sessions) {
     const { state } = await loadLearningState(baseDirectory, { sessionId: summary.sessionId });
     for (const [concept, evidence] of Object.entries(state.evidence ?? {})) {
-      if (!evidence?.reviewAfter) continue;
-      const reviewAt = new Date(evidence.reviewAfter);
-      if (!Number.isNaN(reviewAt.getTime()) && reviewAt <= now) {
+      if (!evidence) continue;
+      let inferred = false;
+      let reviewAt = new Date(evidence.reviewAfter ?? evidence.lastSuccessfulRetrieval ?? evidence.lastAttemptAt ?? state.updatedAt);
+      if (Number.isNaN(reviewAt.getTime())) continue;
+      if (!evidence.reviewAfter) {
+        inferred = true;
+        reviewAt = addDays(reviewAt, reviewIntervalDays(evidence.consecutiveSuccesses));
+      }
+      if (reviewAt <= now) {
         due.push({
           sessionId: state.sessionId,
           topic: state.topic,
           concept,
-          reviewAfter: evidence.reviewAfter,
+          reviewAfter: reviewAt.toISOString(),
+          inferred,
           lastFormat: evidence.lastFormat,
           transferPassed: evidence.transferPassed === true,
         });
@@ -237,12 +244,20 @@ export async function recordCheckpointAssessment(baseDirectory, input, assessmen
   });
 }
 
+const REVIEW_INTERVALS = [1, 3, 7, 14, 30];
+
+function reviewIntervalDays(consecutiveSuccesses) {
+  const index = Math.min(Math.max((consecutiveSuccesses ?? 1) - 1, 0), REVIEW_INTERVALS.length - 1);
+  return REVIEW_INTERVALS[index];
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
 function nextReviewDate(consecutiveSuccesses, outcome) {
-  const intervals = [1, 3, 7, 14, 30];
-  const days = outcome === "accurate"
-    ? intervals[Math.min(Math.max(consecutiveSuccesses - 1, 0), intervals.length - 1)]
-    : 1;
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString();
+  const days = outcome === "accurate" ? reviewIntervalDays(consecutiveSuccesses) : 1;
+  return addDays(new Date(), days).toISOString();
 }

@@ -68,18 +68,37 @@ to choose the right isolation level for a small web application.
 ```bash
 node scripts/setup.mjs claude-code --target /path/to/learning-workspace
 node scripts/setup.mjs opencode --target /path/to/learning-workspace
-node scripts/setup.mjs deepseek-harness --target /path/to/learning-workspace
 ```
 
-DeepSeek Harness support uses its native project skill directory and an MCP patch. Start it from the learning workspace with:
+## DeepSeek Harness
+
+Install the `dsh-workspace-mcp` plugin once in the DSH Plugin Manager. Then run one command inside the learning folder:
+
+```powershell
+cd /path/to/learning-workspace
+node /path/to/concept-loom/scripts/setup.mjs dsh
+```
+
+After `npm link` in the Concept Loom checkout, the same setup is shorter:
+
+```powershell
+cd /path/to/learning-workspace
+concept-loom-setup dsh
+```
+
+The installer creates `.dsh/skills/concept-coach`, `AGENTS.md`, and `.dsh/mcp.json` with a workspace-scoped `concept-loom` server. The server entry uses `cwd: ".."` because `dsh-workspace-mcp` resolves `cwd` relative to `.dsh/mcp.json`; this keeps notebooks and session state in the learning folder. Open a **new** DSH session in that folder; existing sessions do not reload project MCP configuration. Then ask for `/concept-coach`.
+
+Use `--skip-mcp` for only the skill. Use `--patch` instead of `.dsh/mcp.json` when you launch Harness from the CLI without the plugin:
 
 ```bash
 npx @deepseek-ai/dsh --profile web --patch .dsh/concept-loom.patch.yml
 ```
 
-DeepSeek Harness is currently a developer preview and may introduce breaking configuration changes. Use `--skip-mcp` if you only want the `.dsh/skills/concept-coach` skill and will connect the MCP server through your own Harness profile.
+Do not combine `--patch` with the plugin in one session: both would register the same `concept-loom` server name. Rerun setup with `--refresh` after updating Concept Loom.
 
-The installer refuses to overwrite existing configuration. Merge a generated Concept Loom file manually when guidance or MCP configuration already exists.
+DeepSeek Harness is currently a developer preview and may introduce breaking configuration changes.
+
+The installer refuses to overwrite an existing skill or guidance file. It merges `.dsh/mcp.json` without dropping unrelated servers and refuses to replace a conflicting `concept-loom` entry.
 
 Concept Loom has no runtime npm dependencies. Small structures are displayed as monospace text diagrams; larger relationship maps are returned as Mermaid blocks that remain readable in the terminal and render in compatible Markdown viewers.
 

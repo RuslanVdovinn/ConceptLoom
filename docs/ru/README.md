@@ -56,18 +56,37 @@ codex
 ```bash
 node scripts/setup.mjs claude-code --target /путь/к/учебной-папке
 node scripts/setup.mjs opencode --target /путь/к/учебной-папке
-node scripts/setup.mjs deepseek-harness --target /путь/к/учебной-папке
 ```
 
-Для DeepSeek Harness установщик создаёт нативный project skill и отдельный MCP patch. Запускайте Harness из учебной папки так:
+## DeepSeek Harness
+
+Один раз установите плагин `dsh-workspace-mcp` в Plugin Manager DSH. После этого из учебной папки достаточно одной команды:
+
+```powershell
+cd /путь/к/учебной-папке
+node /путь/к/ConceptLoom/scripts/setup.mjs dsh
+```
+
+Если в репозитории Concept Loom выполнен `npm link`, команда короче:
+
+```powershell
+cd /путь/к/учебной-папке
+concept-loom-setup dsh
+```
+
+Установщик создаёт `.dsh/skills/concept-coach`, `AGENTS.md` и `.dsh/mcp.json` с сервером `concept-loom`, привязанным к этой папке. В записи сервера стоит `cwd: ".."`, потому что `dsh-workspace-mcp` отсчитывает `cwd` от `.dsh/mcp.json`; так конспекты и состояние остаются в корне учебной папки. Откройте **новую** сессию DSH в этом workspace — существующие сессии не перечитывают project MCP. Затем вызовите `/concept-coach`.
+
+Флаг `--skip-mcp` устанавливает только skill. Флаг `--patch` создаёт `.dsh/concept-loom.patch.yml` вместо `.dsh/mcp.json` — для запуска Harness из CLI без плагина:
 
 ```bash
 npx @deepseek-ai/dsh --profile web --patch .dsh/concept-loom.patch.yml
 ```
 
-DeepSeek Harness пока находится в developer preview, поэтому его формат конфигурации может меняться. Флаг `--skip-mcp` устанавливает только `.dsh/skills/concept-coach`, если MCP-сервер вы подключаете через собственный профиль Harness.
+Не совмещайте `--patch` с плагином в одной сессии: оба зарегистрируют сервер с именем `concept-loom`. После обновления Concept Loom повторите установку с `--refresh`.
 
-Установщик не перезаписывает существующую конфигурацию. При конфликте вручную объедините её со сгенерированным файлом Concept Loom.
+DeepSeek Harness пока находится в developer preview, поэтому его формат конфигурации может меняться.
+
+Установщик не перезаписывает существующий skill или файл инструкций. `.dsh/mcp.json` он дополняет, сохраняя другие серверы, и отказывается заменять конфликтующий `concept-loom`.
 
 У Concept Loom нет runtime-зависимостей npm. Небольшие структуры показываются текстовыми схемами прямо в терминале, а более крупные карты — блоками Mermaid, которые также можно сохранить в Markdown-конспект.
 

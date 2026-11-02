@@ -49,7 +49,7 @@ Concept Loom
       Markdown · состояние · материалы
 ```
 
-Общая методика находится в `shared/coaching-reference.md`, а `adapters/` переводит её в формат каждого клиента. `scripts/setup.mjs` устанавливает адаптер без перезаписи существующих настроек. Адаптер DeepSeek Harness использует нативный каталог `.dsh/skills` и отдельный patch для подключения локального процесса через `@deepseek-ai/dsh-mcp-client`.
+Общая методика находится в `shared/coaching-reference.md`, а `adapters/` переводит её в формат каждого клиента. `scripts/setup.mjs` устанавливает адаптер без перезаписи существующих настроек. Адаптер DeepSeek Harness использует нативный каталог `.dsh/skills` и `.dsh/mcp.json`, который читает плагин `dsh-workspace-mcp`: каждый workspace получает свой процесс bridge с локальным состоянием. Для CLI без плагина установщик умеет создавать `.dsh/concept-loom.patch.yml` в режиме `--patch`.
 
 `src/bridge.mjs` — локальный MCP-процесс Node.js без npm-зависимостей. Он не открывает сетевой порт.
 

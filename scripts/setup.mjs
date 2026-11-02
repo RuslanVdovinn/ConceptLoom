@@ -1,25 +1,51 @@
 #!/usr/bin/env node
-import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
-const host = args[0];
+const hostAliases = new Map([["dsh", "deepseek-harness"]]);
+const requestedHost = args[0] && !args[0].startsWith("--") ? args[0] : "deepseek-harness";
+const host = hostAliases.get(requestedHost) ?? requestedHost;
 const targetFlag = args.indexOf("--target");
-const target = resolve(targetFlag >= 0 ? args[targetFlag + 1] : process.cwd());
+const targetValue = targetFlag >= 0 ? args[targetFlag + 1] : undefined;
 const skipMcp = args.includes("--skip-mcp");
 const refresh = args.includes("--refresh");
+const patch = args.includes("--patch");
 const allowedHosts = new Set(["codex", "claude-code", "opencode", "deepseek-harness"]);
 
-if (!allowedHosts.has(host) || (targetFlag >= 0 && !args[targetFlag + 1])) {
-  process.stderr.write("Usage: node scripts/setup.mjs <codex|claude-code|opencode|deepseek-harness> [--target PATH] [--skip-mcp] [--refresh]\n");
+function printUsage() {
+  process.stderr.write(
+    "Usage: node scripts/setup.mjs [codex|claude-code|opencode|deepseek-harness|dsh] " +
+    "[--target PATH] [--skip-mcp] [--refresh] [--patch]\n" +
+    "  Host defaults to deepseek-harness when omitted.\n" +
+    "  --patch writes .dsh/concept-loom.patch.yml for CLI launches instead of .dsh/mcp.json.\n",
+  );
+}
+
+if (!allowedHosts.has(host) || (targetFlag >= 0 && (!targetValue || targetValue.startsWith("--")))) {
+  printUsage();
+  process.exit(2);
+}
+if (patch && host !== "deepseek-harness") {
+  process.stderr.write("--patch is only supported for deepseek-harness.\n");
+  process.exit(2);
+}
+if (patch && skipMcp) {
+  process.stderr.write("--patch and --skip-mcp cannot be combined.\n");
   process.exit(2);
 }
 
+const target = resolve(targetValue ?? process.cwd());
+
 async function exists(path) {
-  try { await stat(path); return true; } catch (error) {
+  try {
+    await stat(path);
+    return true;
+  } catch (error) {
     if (error?.code === "ENOENT") return false;
     throw error;
   }
@@ -156,27 +182,110 @@ async function installOpenCode() {
   if (guidance !== "AGENTS.md") process.stdout.write("Merge CONCEPT_LOOM_AGENTS.md into your existing AGENTS.md.\n");
 }
 
+async function findGitRootAbove(directory) {
+  let current = dirname(resolve(directory));
+  for (;;) {
+    if (await exists(join(current, ".git"))) return current;
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function workspaceMcpEntry(serverPath) {
+  return {
+    type: "stdio",
+    command: "node",
+    args: [serverPath],
+    // dsh-workspace-mcp resolves cwd relative to this file, which lives in .dsh.
+    // ".." is therefore the learning workspace root, not the hidden config folder.
+    cwd: "..",
+  };
+}
+
+function entryTargetsServer(entry, serverPath) {
+  if (!entry || typeof entry !== "object") return false;
+  const entryArgs = Array.isArray(entry.args) ? entry.args : [];
+  return entryArgs.some(
+    (arg) => typeof arg === "string" && resolve(arg).toLowerCase() === resolve(serverPath).toLowerCase(),
+  );
+}
+
+async function upsertWorkspaceMcp(serverPath) {
+  const destination = join(target, ".dsh", "mcp.json");
+  let config = { mcpServers: {} };
+
+  if (await exists(destination)) {
+    let parsed;
+    try {
+      parsed = JSON.parse(await readFile(destination, "utf8"));
+    } catch {
+      throw new Error(`${destination} is not valid JSON; fix it before installing Concept Loom`);
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(`${destination} must contain a JSON object`);
+    }
+    const servers = parsed.mcpServers ?? {};
+    if (!servers || typeof servers !== "object" || Array.isArray(servers)) {
+      throw new Error(`${destination}: mcpServers must be a JSON object`);
+    }
+    config = { ...parsed, mcpServers: servers };
+    const existing = servers["concept-loom"];
+    if (existing && !entryTargetsServer(existing, serverPath)) {
+      throw new Error(
+        `${destination} already declares a different 'concept-loom' server; ` +
+        "remove or rename it before installing Concept Loom",
+      );
+    }
+    if (existing && !refresh) {
+      process.stdout.write(`Workspace MCP server 'concept-loom' is already configured in ${destination}\n`);
+      return;
+    }
+  }
+
+  config.mcpServers["concept-loom"] = workspaceMcpEntry(serverPath);
+  await mkdir(dirname(destination), { recursive: true });
+  await writeFile(destination, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  process.stdout.write(`Configured workspace MCP server 'concept-loom' in ${destination}\n`);
+}
+
+async function hasWorkspaceMcpPlugin() {
+  const dshHome = resolve(process.env.DSH_HOME || join(homedir(), ".dsh"));
+  const profilesDirectory = join(dshHome, "profiles");
+  let profileNames;
+  try {
+    profileNames = await readdir(profilesDirectory);
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+
+  for (const name of profileNames) {
+    const profileDirectory = join(profilesDirectory, name);
+    try {
+      const packageJson = JSON.parse(await readFile(join(profileDirectory, "package.json"), "utf8"));
+      const bundles = packageJson?.dsh?.profile?.bundles;
+      const dependencies = packageJson?.dependencies;
+      if (Array.isArray(bundles) && bundles.some((entry) => String(entry).includes("workspace-mcp"))) return true;
+      if (dependencies && Object.keys(dependencies).some((entry) => entry.includes("workspace-mcp"))) return true;
+    } catch {
+      // A profile without package.json or with invalid JSON does not prove the plugin is absent.
+    }
+    try {
+      const patchText = await readFile(join(profileDirectory, "cordis.patch.yml"), "utf8");
+      if (/workspace-mcp/.test(patchText)) return true;
+    } catch {
+      // No patch file in this profile.
+    }
+  }
+  return false;
+}
+
 async function installDeepSeekHarness() {
   const source = join(projectRoot, "adapters", "deepseek-harness");
   const skillDestination = join(target, ".dsh", "skills", "concept-coach");
   await installSkill(join(source, ".dsh", "skills", "concept-coach"), skillDestination);
   await installReference(skillDestination);
-
-  const patchDestination = join(target, ".dsh", "concept-loom.patch.yml");
-  if (!skipMcp && (refresh || !(await exists(patchDestination)))) {
-    if (refresh) {
-      await writeFile(
-        patchDestination,
-        (await readFile(join(source, "concept-loom.patch.yml.template"), "utf8"))
-          .replaceAll("__SERVER_PATH__", yamlSingleQuoted(join(projectRoot, "src", "bridge.mjs"))),
-        "utf8",
-      );
-    } else {
-      await materializeTemplate(join(source, "concept-loom.patch.yml.template"), patchDestination, {
-        __SERVER_PATH__: yamlSingleQuoted(join(projectRoot, "src", "bridge.mjs")),
-      });
-    }
-  }
 
   if (refresh) {
     process.stdout.write(`Refreshed DeepSeek Harness skill in ${skillDestination}\n`);
@@ -186,14 +295,67 @@ async function installDeepSeekHarness() {
     if (guidance !== "AGENTS.md") process.stdout.write("Merge CONCEPT_LOOM_AGENTS.md into your existing AGENTS.md.\n");
   }
 
+  const gitRoot = await findGitRootAbove(target);
+  if (gitRoot) {
+    process.stdout.write(
+      `\nWarning: ${target} is inside the Git repository ${gitRoot}.\n` +
+      "DeepSeek Harness discovers project skills at the Git root, so it will not see " +
+      `${join(target, ".dsh", "skills")}.\n` +
+      `Run setup at ${gitRoot} or make this learning folder its own project.\n`,
+    );
+  }
+
+  const serverPath = join(projectRoot, "src", "bridge.mjs");
+
   if (skipMcp) {
-    process.stdout.write("Skipped DeepSeek Harness MCP patch generation (--skip-mcp).\n");
+    process.stdout.write("Skipped MCP configuration (--skip-mcp).\n");
+    process.stdout.write(`\nOpen a NEW session in this workspace and ask:\n  /concept-coach\n`);
     return;
   }
+
+  if (patch) {
+    const patchDestination = join(target, ".dsh", "concept-loom.patch.yml");
+    const content = (await readFile(join(source, "concept-loom.patch.yml.template"), "utf8"))
+      .replaceAll("__SERVER_PATH__", yamlSingleQuoted(serverPath));
+    if (await exists(patchDestination)) {
+      if (!refresh) throw new Error(`refusing to overwrite existing file: ${patchDestination}`);
+      await writeFile(patchDestination, content, "utf8");
+    } else {
+      await mkdir(dirname(patchDestination), { recursive: true });
+      await writeFile(patchDestination, content, "utf8");
+    }
+    process.stdout.write(`Created CLI patch ${patchDestination}\n`);
+    process.stdout.write(
+      `\nStart DeepSeek Harness with Concept Loom:\n` +
+      `  cd ${JSON.stringify(target)}\n` +
+      `  npx @deepseek-ai/dsh --profile web --patch .dsh/concept-loom.patch.yml\n` +
+      "Do not combine this patch with the dsh-workspace-mcp plugin in the same session.\n",
+    );
+    return;
+  }
+
+  await upsertWorkspaceMcp(serverPath);
+
+  if (await hasWorkspaceMcpPlugin()) {
+    process.stdout.write("Detected the dsh-workspace-mcp plugin in a DSH profile.\n");
+  } else {
+    process.stdout.write(
+      "\nNote: .dsh/mcp.json is loaded by the dsh-workspace-mcp plugin, which was not found in any DSH profile.\n" +
+      "Install it once in the DSH Plugin Manager, or run:\n" +
+      "  dsh plugin --profile desktop add dsh-workspace-mcp\n" +
+      "Without it, the skill loads but the loom_* tools are unavailable in the Desktop GUI.\n",
+    );
+  }
+
+  if (await exists(join(target, ".dsh", "concept-loom.patch.yml"))) {
+    process.stdout.write(
+      "Found an older .dsh/concept-loom.patch.yml; do not use --patch together with dsh-workspace-mcp.\n",
+    );
+  }
+
   process.stdout.write(
-    `\nStart DeepSeek Harness with Concept Loom:\n` +
-    `  cd ${JSON.stringify(target)}\n` +
-    `  npx @deepseek-ai/dsh --profile web --patch .dsh/concept-loom.patch.yml\n`,
+    `\nOpen a NEW session in this workspace and ask:\n  /concept-coach\n` +
+    "Existing sessions do not reload project MCP configuration.\n",
   );
 }
 
