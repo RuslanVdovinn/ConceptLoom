@@ -26,12 +26,46 @@ function discardExpired(now = Date.now()) {
   }
 }
 
+function buildQualityWarnings({ prompt, choices, criteria, format }) {
+  const warnings = [];
+  if (format === "choice") {
+    const labels = choices.map((choice) => choice.label);
+    const lengths = labels.map((label) => label.length).sort((left, right) => left - right);
+    const median = lengths[Math.floor(lengths.length / 2)] ?? 0;
+    if (labels.length < 3) {
+      warnings.push("Only two choices; use three or more when the distinction matters.");
+    }
+    if (labels.some((label) => label.length > Math.max(40, median * 2))) {
+      warnings.push("One choice is much longer than the others; length can cue the answer.");
+    }
+    if (labels.some((label) => /all of the above|none of the above|все вышеперечисленное|ни один из/i.test(label))) {
+      warnings.push("Avoid meta-options such as all/none of the above.");
+    }
+    if (/\b(not|never|except)\b|(^|\s)не\s/i.test(prompt)) {
+      warnings.push("Negative wording can make a choice question ambiguous.");
+    }
+    const prefixes = labels.map((label) => label.toLowerCase().split(/\s+/).slice(0, 2).join(" "));
+    if (prefixes.length >= 2 && new Set(prefixes).size === 1) {
+      warnings.push("All choices start the same way; keep alternatives parallel but clearly different.");
+    }
+  } else {
+    if (!criteria || criteria.length < 2) {
+      warnings.push("Use at least two criteria for an open response.");
+    }
+    if (criteria?.some((criterion) => /\b(understand|know|good|correct|appropriate|понима|знает|правильн)/i.test(criterion))) {
+      warnings.push("A criterion is vague; describe observable evidence instead.");
+    }
+  }
+  return warnings;
+}
+
 export function composeCheckpoint(input, random = Math.random) {
   discardExpired();
   const prompt = cleanText(input.prompt, "prompt");
   const rationale = cleanText(input.rationale, "rationale");
   const format = input.format === undefined ? "choice" : cleanText(input.format, "format");
   if (!FORMATS.has(format)) throw new Error(`format must be one of: ${[...FORMATS].join(", ")}`);
+  const sourceRef = typeof input.sourceRef === "string" && input.sourceRef.trim() ? input.sourceRef.trim() : undefined;
 
   const token = randomBytes(18).toString("base64url");
   if (format !== "choice") {
@@ -39,11 +73,14 @@ export function composeCheckpoint(input, random = Math.random) {
       throw new Error("criteria must contain at least one entry for an open checkpoint");
     }
     const criteria = input.criteria.map((entry, index) => cleanText(entry, `criteria[${index}]`));
-    activeCards.set(token, { createdAt: Date.now(), prompt, rationale, format, criteria });
+    const qualityWarnings = buildQualityWarnings({ prompt, choices: [], criteria, format });
+    activeCards.set(token, { createdAt: Date.now(), prompt, rationale, format, criteria, sourceRef, qualityWarnings });
     return {
       token,
       prompt,
       format,
+      sourceRef,
+      qualityWarnings,
       escapeChoice: { key: "__gap__", label: "I do not know yet" },
       instructions: "Answer without answer choices, or respond with __gap__. Optionally report confidence from 0 to 100.",
     };
@@ -75,6 +112,7 @@ export function composeCheckpoint(input, random = Math.random) {
   }
 
   const arranged = input.mix === false ? choices : rearrange(choices, random);
+  const qualityWarnings = buildQualityWarnings({ prompt, choices, criteria: [], format });
   activeCards.set(token, {
     createdAt: Date.now(),
     prompt,
@@ -83,12 +121,16 @@ export function composeCheckpoint(input, random = Math.random) {
     expectedSet,
     multiple,
     format,
+    sourceRef,
+    qualityWarnings,
   });
 
   return {
     token,
     prompt,
     format,
+    sourceRef,
+    qualityWarnings,
     multiple,
     choices: arranged,
     escapeChoice: { key: "__gap__", label: "I do not know yet" },
@@ -125,6 +167,7 @@ export function assessCheckpoint(input) {
       response,
       criteria: card.criteria,
       rationale: card.rationale,
+      sourceRef: card.sourceRef,
       confidence,
       calibration: describeCalibration(accurate, confidence),
       note: typeof input.note === "string" && input.note.trim() ? input.note.trim() : undefined,
@@ -155,6 +198,7 @@ export function assessCheckpoint(input) {
     selected,
     expected: [...card.expectedSet],
     rationale: card.rationale,
+    sourceRef: card.sourceRef,
     confidence,
     calibration: describeCalibration(accurate, confidence),
     note: typeof input.note === "string" && input.note.trim() ? input.note.trim() : undefined,

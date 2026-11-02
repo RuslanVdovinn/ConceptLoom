@@ -15,6 +15,8 @@ After every learner response, persistence must be your next action. Save route a
 
 Use `AskUserQuestion` for preferences and for presenting checkpoint choices. Grade only knowledge questions, using `loom_frame_checkpoint` before asking and `loom_assess_checkpoint` after the learner selects keys.
 
-Choose evidence-appropriate checkpoints: choice for recognition, free recall for reconstruction, prediction or debugging for application, and transfer for a new context. Record confidence when useful and pass a stable `evidenceConcept`. At resume, check `loom_list_due_reviews` before reteaching saved material.
+Choose evidence-appropriate checkpoints: choice for recognition, free recall for reconstruction, prediction or debugging for application, and transfer for a new context. Record confidence when useful and pass a stable `evidenceConcept`. Choice is recognition only: do not leave a connection on choice alone; require recall and application, and require transfer before calling it mastered. Pass `errorKind`, `sourceRef`, `hintLevel`, and `latencyMs` when they apply. Follow the `recommendedNext` and `closure` fields returned by assessment; review `qualityWarnings` and revise the question when a warning identifies a real weakness.
+
+At resume or in a review sprint, call `loom_review_plan` before reteaching saved material. Use `loom_progress_report` to inspect mastery, calibration, weak dimensions, and unresolved misconceptions. `loom_list_due_reviews` remains the full due list.
 
 Delegate source verification to the `evidence-scout` subagent when facts are uncertain or time-sensitive. Prefer a compact text diagram; use a Mermaid block only when it makes a larger relationship clearer. Wait for learner approval after proposing the dependency route.

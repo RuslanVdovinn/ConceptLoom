@@ -72,7 +72,7 @@ The shared method lives in `shared/coaching-reference.md`. Directories under `ad
 
 ### MCP bridge
 
-`src/bridge.mjs` is a local Node.js MCP process. It communicates over standard input/output, opens no network listener, and exposes nine tools:
+`src/bridge.mjs` is a local Node.js MCP process. It communicates over standard input/output, opens no network listener, and exposes eleven tools:
 
 | Tool | Purpose |
 |---|---|
@@ -82,7 +82,9 @@ The shared method lives in `shared/coaching-reference.md`. Directories under `ad
 | `loom_add_note` | Append a useful learning event. |
 | `loom_save_learning_state` | Persist the route and exact resume point. |
 | `loom_load_learning_state` | Restore the latest or a named learning session. |
-| `loom_list_due_reviews` | Find concepts due for delayed retrieval. |
+| `loom_list_due_reviews` | Find every concept due for delayed retrieval. |
+| `loom_review_plan` | Build a short interleaved review plan. |
+| `loom_progress_report` | Summarize mastery, calibration, weak dimensions, and errors. |
 | `loom_show_relation_map` | Return a Mermaid block for the conversation. |
 | `loom_show_text_diagram` | Return a monospace diagram for the terminal. |
 
@@ -91,6 +93,10 @@ The shared method lives in `shared/coaching-reference.md`. Directories under `ad
 `src/checkpoints.mjs` supports choice, free-recall, prediction, debugging, and transfer checks. It stores expected keys or private grading criteria behind a random token. The learner receives only the public prompt, response instructions, token, and an “I do not know yet” option—not the answer, criteria, or rationale.
 
 Results are `accurate`, `needs-repair`, or `knowledge-gap`. An optional confidence score records whether the learner was well calibrated, overconfident, or underconfident. Tokens live in memory for up to six hours, work once, and disappear when the MCP process restarts.
+
+Evidence records a `masteryLevel` (`unseen`, `recognized`, `recalled`, `applied`, `transferred`), `errorKind`, `misconceptions`, `sourceRef`, `hintLevel`, and `latencyMs`. Choice is recognition only: secure a connection with recall and application, and call it mastered only after transfer. Review intervals shorten after a hint or low confidence and lengthen after a confident accurate answer.
+
+`loom_frame_checkpoint` returns `qualityWarnings` for two-choice questions, meta-options, negative wording, and a conspicuously long correct option. `loom_assess_checkpoint` returns `masteryLevel`, `closure`, `recommendedNext`, and `reason`: an accurate choice recommends `free-recall`, recall recommends `prediction`, and application recommends `transfer`. `loom_review_plan` accepts `minutes` and `sessionId` and selects formats from mastery, not only from the previous format.
 
 ### Notebook and diagrams
 

@@ -3,7 +3,15 @@ import readline from "node:readline";
 import { composeCheckpoint, assessCheckpoint } from "./checkpoints.mjs";
 import { beginNotebook, addNotebookEntry } from "./notebook.mjs";
 import { prepareMermaid, prepareTextDiagram } from "./diagrams.mjs";
-import { listDueReviews, loadLearningState, recordCheckpointAssessment, saveLearningState } from "./progress.mjs";
+import {
+  buildNextRecommendation,
+  buildProgressReport,
+  buildReviewPlan,
+  listDueReviews,
+  loadLearningState,
+  recordCheckpointAssessment,
+  saveLearningState,
+} from "./progress.mjs";
 
 const PROTOCOL_VERSION = "2025-06-18";
 const workspace = process.cwd();
@@ -32,6 +40,7 @@ const toolCatalog = [
         rationale: { type: "string" },
         multiple: { type: "boolean", default: false },
         mix: { type: "boolean", default: true },
+        sourceRef: { type: "string", description: "Optional source location, page, or timestamp." },
       },
     },
   },
@@ -54,6 +63,13 @@ const toolCatalog = [
         gap: { type: "string", description: "Gap to record when the learner selects __gap__." },
         evidenceConcept: { type: "string", description: "Stable concept name whose evidence record this attempt updates." },
         hintUsed: { type: "boolean", default: false },
+        hintLevel: { type: "integer", minimum: 0, maximum: 3, description: "0 = none, 3 = near-full solution." },
+        latencyMs: { type: "integer", minimum: 0, description: "Optional time from prompt to answer." },
+        errorKind: { enum: ["slip", "gap", "misconception", "retrieval-failure"], description: "Diagnosis for a non-accurate attempt." },
+        misconception: { type: "string", description: "Wrong model the learner demonstrated." },
+        misconceptionCorrection: { type: "string", description: "Counterexample or corrected model used to repair it." },
+        misconceptionRepaired: { type: "boolean", default: false, description: "Mark this concept's unresolved misconceptions as repaired." },
+        sourceRef: { type: "string", description: "Optional source location for this concept." },
         note: { type: "string" },
       },
     },
@@ -78,7 +94,20 @@ const toolCatalog = [
       required: ["path", "kind", "body"],
       properties: {
         path: { type: "string" },
-        kind: { enum: ["learner", "guide", "prompt", "response", "insight", "diagram"] },
+        kind: {
+          enum: [
+            "learner",
+            "guide",
+            "prompt",
+            "response",
+            "insight",
+            "diagram",
+            "question",
+            "summary",
+            "misconception",
+            "source",
+          ],
+        },
         body: { type: "string" },
         title: { type: "string" },
       },
@@ -100,6 +129,22 @@ const toolCatalog = [
         route: { type: "array", items: { type: "string" } },
         secured: { type: "array", items: { type: "string" } },
         gaps: { type: "array", items: { type: "string" } },
+        misconceptions: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["concept", "wrongModel"],
+            properties: {
+              concept: { type: "string" },
+              wrongModel: { type: "string" },
+              correction: { type: "string" },
+              sourceRef: { type: "string" },
+              repaired: { type: "boolean" },
+              createdAt: { type: "string" },
+              repairedAt: { type: "string" },
+            },
+          },
+        },
         evidence: { type: "object", description: "Per-concept evidence ledger; preserve the complete object on updates." },
         routeExtensions: {
           type: "array",
@@ -138,6 +183,30 @@ const toolCatalog = [
     },
   },
   {
+    name: "loom_review_plan",
+    description: "Build a short interleaved review plan from due concepts. Supports a time budget, a single session, and mastery-based format suggestions; prefer this over reviewing one topic in a block.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", minimum: 1, maximum: 10, default: 5 },
+        minutes: { type: "integer", minimum: 5, maximum: 120, description: "Optional time budget for the sprint." },
+        sessionId: { type: "string", description: "Optional session to review; omit to interleave across sessions." },
+        now: { type: "string", description: "Optional ISO timestamp for deterministic clients and tests." },
+      },
+    },
+  },
+  {
+    name: "loom_progress_report",
+    description: "Summarize mastery levels, due reviews, calibration, weak dimensions, and unresolved misconceptions for one session or the latest session.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+        now: { type: "string", description: "Optional ISO timestamp for deterministic clients and tests." },
+      },
+    },
+  },
+  {
     name: "loom_show_relation_map",
     description: "Prepare a Mermaid diagram to show directly in the terminal response and optionally save in the Markdown notebook. Does not create an image file.",
     inputSchema: {
@@ -167,7 +236,10 @@ async function invokeTool(name, args) {
     case "loom_assess_checkpoint": {
       const assessment = assessCheckpoint(args);
       const learningState = await recordCheckpointAssessment(workspace, args, assessment);
-      return textResult({ ...assessment, learningState });
+      const evidenceConcept = args.evidenceConcept ?? args.securedConnection ?? args.currentStep ?? learningState.currentStep;
+      const evidence = evidenceConcept ? learningState.evidence?.[evidenceConcept] : undefined;
+      const recommendation = buildNextRecommendation(evidence, assessment);
+      return textResult({ ...assessment, ...recommendation, learningState });
     }
     case "loom_start_notebook": {
       const path = await beginNotebook(workspace, args);
@@ -180,6 +252,8 @@ async function invokeTool(name, args) {
     case "loom_save_learning_state": return textResult(await saveLearningState(workspace, args));
     case "loom_load_learning_state": return textResult(await loadLearningState(workspace, args));
     case "loom_list_due_reviews": return textResult(await listDueReviews(workspace, args));
+    case "loom_review_plan": return textResult(await buildReviewPlan(workspace, args));
+    case "loom_progress_report": return textResult(await buildProgressReport(workspace, args));
     case "loom_show_relation_map": return textResult(prepareMermaid(args));
     case "loom_show_text_diagram": return textResult(prepareTextDiagram(args));
     default: throw new Error(`unknown tool: ${name}`);

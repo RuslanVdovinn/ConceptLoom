@@ -3,7 +3,16 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { listDueReviews, loadLearningState, recordCheckpointAssessment, saveLearningState } from "../src/progress.mjs";
+import {
+  buildNextRecommendation,
+  buildProgressReport,
+  buildReviewPlan,
+  listDueReviews,
+  loadLearningState,
+  recordCheckpointAssessment,
+  saveLearningState,
+} from "../src/progress.mjs";
+import { assessCheckpoint, composeCheckpoint } from "../src/checkpoints.mjs";
 
 test("persists and restores a learning session", async () => {
   const root = await mkdtemp(join(tmpdir(), "loom-progress-"));
@@ -155,4 +164,229 @@ test("infers due reviews for legacy evidence without reviewAfter", async () => {
   assert.equal(reviews.due.length, 1);
   assert.equal(reviews.due[0].concept, "old-concept");
   assert.equal(reviews.due[0].inferred, true);
+});
+
+test("raises mastery from recognition to transfer", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-progress-"));
+  await saveLearningState(root, {
+    sessionId: "mastery",
+    topic: "Mastery",
+    goal: "Climb the mastery ladder",
+    phase: "build",
+    nextStep: "Start",
+  });
+
+  const choice = composeCheckpoint({
+    prompt: "Pick one",
+    choices: [{ key: "a", label: "A" }, { key: "b", label: "B" }],
+    expected: "a",
+    rationale: "A is expected.",
+  });
+  let state = await recordCheckpointAssessment(root, {
+    sessionId: "mastery",
+    currentStep: "concept",
+    nextStep: "Recall it",
+    securedConnection: "concept",
+    evidenceConcept: "concept",
+  }, assessCheckpoint({ token: choice.token, selected: "a" }));
+  assert.equal(state.evidence.concept.masteryLevel, "recognized");
+
+  const recall = composeCheckpoint({
+    format: "free-recall",
+    prompt: "Explain it",
+    criteria: ["Names the mechanism"],
+    rationale: "The mechanism is the answer.",
+  });
+  state = await recordCheckpointAssessment(root, {
+    sessionId: "mastery",
+    currentStep: "concept",
+    nextStep: "Apply it",
+    securedConnection: "concept",
+    evidenceConcept: "concept",
+  }, assessCheckpoint({ token: recall.token, response: "The mechanism follows.", verdict: "accurate" }));
+  assert.equal(state.evidence.concept.masteryLevel, "recalled");
+
+  const application = composeCheckpoint({
+    format: "prediction",
+    prompt: "Predict the outcome",
+    criteria: ["States the consequence"],
+    rationale: "The consequence follows from the mechanism.",
+  });
+  state = await recordCheckpointAssessment(root, {
+    sessionId: "mastery",
+    currentStep: "concept",
+    nextStep: "Transfer it",
+    securedConnection: "concept",
+    evidenceConcept: "concept",
+  }, assessCheckpoint({ token: application.token, response: "It will fail.", verdict: "accurate" }));
+  assert.equal(state.evidence.concept.masteryLevel, "applied");
+
+  const transfer = composeCheckpoint({
+    format: "transfer",
+    prompt: "Use it in a new case",
+    criteria: ["Keeps the underlying dependency"],
+    rationale: "The same dependency governs the new case.",
+  });
+  state = await recordCheckpointAssessment(root, {
+    sessionId: "mastery",
+    currentStep: "concept",
+    nextStep: "Next",
+    securedConnection: "concept",
+    evidenceConcept: "concept",
+  }, assessCheckpoint({ token: transfer.token, response: "The same dependency applies.", verdict: "accurate" }));
+  assert.equal(state.evidence.concept.masteryLevel, "transferred");
+});
+
+test("records error taxonomy, misconceptions, hints, latency, and source references", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-progress-"));
+  await saveLearningState(root, {
+    sessionId: "errors",
+    topic: "Errors",
+    goal: "Repair a misconception",
+    phase: "build",
+    nextStep: "Start",
+  });
+
+  const first = composeCheckpoint({
+    format: "free-recall",
+    prompt: "Explain it",
+    criteria: ["Names the mechanism"],
+    rationale: "The mechanism is the answer.",
+    sourceRef: "book p. 42",
+  });
+  let state = await recordCheckpointAssessment(root, {
+    sessionId: "errors",
+    currentStep: "concept",
+    nextStep: "Repair it",
+    securedConnection: "concept",
+    evidenceConcept: "concept",
+    errorKind: "misconception",
+    misconception: "Confuses the mechanism with its side effect.",
+    misconceptionCorrection: "The mechanism is independent of the side effect.",
+    hintLevel: 2,
+    latencyMs: 5000,
+  }, assessCheckpoint({ token: first.token, response: "The side effect is the mechanism.", verdict: "needs-repair", confidence: 90 }));
+
+  assert.equal(state.evidence.concept.lastErrorKind, "misconception");
+  assert.equal(state.evidence.concept.errorCounts.misconception, 1);
+  assert.equal(state.evidence.concept.lastHintLevel, 2);
+  assert.equal(state.evidence.concept.hintUsed, true);
+  assert.equal(state.evidence.concept.lastLatencyMs, 5000);
+  assert.equal(state.evidence.concept.lastSourceRef, "book p. 42");
+  assert.equal(state.misconceptions.length, 1);
+  assert.equal(state.misconceptions[0].repaired, false);
+
+  const repair = composeCheckpoint({
+    format: "free-recall",
+    prompt: "Explain it again",
+    criteria: ["Names the mechanism"],
+    rationale: "The mechanism is the answer.",
+  });
+  state = await recordCheckpointAssessment(root, {
+    sessionId: "errors",
+    currentStep: "concept",
+    nextStep: "Next",
+    securedConnection: "concept",
+    evidenceConcept: "concept",
+    misconceptionRepaired: true,
+  }, assessCheckpoint({ token: repair.token, response: "The mechanism is independent.", verdict: "accurate" }));
+  assert.equal(state.misconceptions[0].repaired, true);
+});
+
+test("recommends the next evidence step from mastery", () => {
+  const choice = buildNextRecommendation(
+    { masteryLevel: "recognized", dimensions: { recognition: "demonstrated" } },
+    { outcome: "accurate" },
+  );
+  assert.equal(choice.closure, "provisional");
+  assert.equal(choice.recommendedNext, "free-recall");
+
+  const applied = buildNextRecommendation(
+    { masteryLevel: "applied", dimensions: { recall: "demonstrated", application: "demonstrated" } },
+    { outcome: "accurate" },
+  );
+  assert.equal(applied.recommendedNext, "transfer");
+
+  const transferred = buildNextRecommendation(
+    { masteryLevel: "transferred", transferPassed: true },
+    { outcome: "accurate" },
+  );
+  assert.equal(transferred.closure, "mastered");
+  assert.equal(transferred.recommendedNext, "review-later");
+
+  const misconception = buildNextRecommendation(
+    { masteryLevel: "recognized", lastErrorKind: "misconception" },
+    { outcome: "needs-repair" },
+  );
+  assert.equal(misconception.closure, "open");
+  assert.equal(misconception.recommendedNext, "contrast-and-retest");
+});
+
+test("builds an interleaved review plan and a progress report", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-progress-"));
+  await saveLearningState(root, {
+    sessionId: "alpha",
+    topic: "Alpha",
+    goal: "Learn alpha",
+    phase: "review",
+    nextStep: "Review alpha",
+  });
+  const alpha = composeCheckpoint({
+    prompt: "Pick one",
+    choices: [{ key: "a", label: "A" }, { key: "b", label: "B" }],
+    expected: "a",
+    rationale: "A is expected.",
+  });
+  await recordCheckpointAssessment(root, {
+    sessionId: "alpha",
+    currentStep: "alpha-concept",
+    nextStep: "Review alpha",
+    securedConnection: "alpha-concept",
+    evidenceConcept: "alpha-concept",
+  }, assessCheckpoint({ token: alpha.token, selected: "a" }));
+
+  await saveLearningState(root, {
+    sessionId: "beta",
+    topic: "Beta",
+    goal: "Learn beta",
+    phase: "review",
+    nextStep: "Review beta",
+  });
+  const beta = composeCheckpoint({
+    format: "free-recall",
+    prompt: "Explain beta",
+    criteria: ["Names the mechanism"],
+    rationale: "The mechanism is the answer.",
+  });
+  await recordCheckpointAssessment(root, {
+    sessionId: "beta",
+    currentStep: "beta-concept",
+    nextStep: "Review beta",
+    securedConnection: "beta-concept",
+    evidenceConcept: "beta-concept",
+  }, assessCheckpoint({ token: beta.token, response: "The mechanism follows.", verdict: "accurate" }));
+
+  const plan = await buildReviewPlan(root, { limit: 2, now: "2100-01-01T00:00:00.000Z" });
+  assert.equal(plan.plan.length, 2);
+  assert.deepEqual(new Set(plan.plan.map((item) => item.topic)), new Set(["Alpha", "Beta"]));
+  assert.equal(plan.plan.find((item) => item.topic === "Alpha").suggestedFormat, "free-recall");
+  assert.equal(plan.plan.find((item) => item.topic === "Beta").suggestedFormat, "prediction");
+
+  const alphaPlan = await buildReviewPlan(root, {
+    sessionId: "alpha",
+    minutes: 10,
+    now: "2100-01-01T00:00:00.000Z",
+  });
+  assert.equal(alphaPlan.sessionId, "alpha");
+  assert.equal(alphaPlan.plan.length, 1);
+  assert.ok(alphaPlan.estimatedMinutes > 0);
+
+  const budgetPlan = await buildReviewPlan(root, { minutes: 5, now: "2100-01-01T00:00:00.000Z" });
+  assert.ok(budgetPlan.estimatedMinutes <= 5);
+
+  const report = await buildProgressReport(root, { sessionId: "alpha", now: "2100-01-01T00:00:00.000Z" });
+  assert.equal(report.sessionId, "alpha");
+  assert.equal(report.mastery.recognized, 1);
+  assert.equal(report.dueCount, 1);
+  assert.match(report.markdown, /Progress: Alpha/);
 });

@@ -14,6 +14,18 @@ test("creates and extends a notebook", async () => {
   assert.match(text, /KEY CONNECTION/);
 });
 
+test("writes summary, question, misconception, and source entries", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-test-"));
+  await beginNotebook(root, { path: "notes.md", title: "Mixed" });
+  await addNotebookEntry(root, { path: "notes.md", kind: "question", body: "Why does this follow?" });
+  await addNotebookEntry(root, { path: "notes.md", kind: "misconception", body: "The side effect is not the mechanism." });
+  await addNotebookEntry(root, { path: "notes.md", kind: "source", body: "Book, p. 42" });
+  const text = await readFile(join(root, "notes.md"), "utf8");
+  assert.match(text, /OPEN QUESTION/);
+  assert.match(text, /\[!warning\] MISCONCEPTION/);
+  assert.match(text, /SOURCE/);
+});
+
 test("rejects notebook paths outside the workspace", () => {
   assert.throws(() => resolveNotebookPath("/tmp/work", "../outside.md"), /inside the working directory/);
 });

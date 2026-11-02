@@ -23,8 +23,12 @@ It works with topics you explore from scratch and with your own books, courses, 
 - Learn toward a practical outcome instead of surveying an entire field.
 - Expose gaps and misconceptions before building on them.
 - Check understanding with concealed-answer checkpoints.
+- Track mastery levels instead of treating recognition as understanding.
+- Diagnose slips, gaps, retrieval failures, and misconceptions.
+- Get a deterministic next-step recommendation instead of closing on recognition.
 - Measure recognition, recall, application, and transfer separately.
-- Revisit due concepts through spaced retrieval across sessions.
+- Plan short interleaved reviews with a time budget and adaptive spacing.
+- Warn about weak checkpoint questions before showing them.
 - Keep concise Markdown learning notes between sessions.
 - Use the same workflow in Codex, Claude Code, OpenCode, and DeepSeek Harness.
 - Show compact text or Mermaid diagrams directly in the conversation.

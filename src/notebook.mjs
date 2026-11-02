@@ -1,7 +1,18 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-const permittedKinds = new Set(["learner", "guide", "prompt", "response", "insight", "diagram"]);
+const permittedKinds = new Set([
+  "learner",
+  "guide",
+  "prompt",
+  "response",
+  "insight",
+  "diagram",
+  "question",
+  "summary",
+  "misconception",
+  "source",
+]);
 
 function ensureInside(root, target) {
   const rel = relative(root, target);
@@ -25,9 +36,20 @@ function blockFor(kind, body, title) {
     response: "CHECKPOINT RESULT",
     insight: "KEY CONNECTION",
     diagram: "DIAGRAM",
+    question: "OPEN QUESTION",
+    summary: "SUMMARY",
+    misconception: "MISCONCEPTION",
+    source: "SOURCE",
   };
   const heading = title?.trim() || labels[kind];
-  return `> [!${kind === "response" ? "success" : kind === "prompt" ? "question" : "note"}] ${heading}\n>\n${text
+  const alert = kind === "response"
+    ? "success"
+    : kind === "prompt" || kind === "question"
+      ? "question"
+      : kind === "misconception"
+        ? "warning"
+        : "note";
+  return `> [!${alert}] ${heading}\n>\n${text
     .split("\n")
     .map((line) => `> ${line}`)
     .join("\n")}`;

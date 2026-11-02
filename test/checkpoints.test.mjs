@@ -74,6 +74,43 @@ test("frames and assesses an open transfer checkpoint without leaking criteria",
   assert.equal(result.criteria.length, 2);
 });
 
+test("warns about weak choice and open-response quality", () => {
+  const choice = composeCheckpoint({
+    prompt: "Which option is NOT correct?",
+    choices: [
+      { key: "a", label: "All of the above" },
+      { key: "b", label: "B" },
+      { key: "c", label: "C" },
+    ],
+    expected: "b",
+    rationale: "B is the exception.",
+    mix: false,
+  });
+  assert.ok(choice.qualityWarnings.some((warning) => /meta-options/.test(warning)));
+  assert.ok(choice.qualityWarnings.some((warning) => /Negative wording/.test(warning)));
+
+  const open = composeCheckpoint({
+    format: "free-recall",
+    prompt: "Explain the mechanism.",
+    criteria: ["Understand it"],
+    rationale: "The mechanism matters.",
+  });
+  assert.ok(open.qualityWarnings.some((warning) => /vague/.test(warning)));
+});
+
+test("carries a source reference through frame and assessment", () => {
+  const card = composeCheckpoint({
+    prompt: "Pick one",
+    choices: [{ key: "a", label: "A" }, { key: "b", label: "B" }],
+    expected: "a",
+    rationale: "A is expected.",
+    sourceRef: "book p. 42",
+  });
+  assert.equal(card.sourceRef, "book p. 42");
+  const result = assessCheckpoint({ token: card.token, selected: "a" });
+  assert.equal(result.sourceRef, "book p. 42");
+});
+
 test("detects confident incorrect answers and validates confidence", () => {
   const first = composeCheckpoint({
     prompt: "Pick one",

@@ -9,6 +9,14 @@ All notable changes to Concept Loom are documented here.
 - One-command DeepSeek Harness setup for the Desktop GUI: the installer writes `.dsh/mcp.json` for the `dsh-workspace-mcp` plugin, so each learning folder gets its own MCP process and local state.
 - `concept-loom-setup` executable, a `dsh` host alias, and a DeepSeek Harness default when the host is omitted.
 - Safe `.dsh/mcp.json` merge that preserves unrelated servers and refuses to replace a conflicting `concept-loom` entry.
+- Mastery levels (`unseen`, `recognized`, `recalled`, `applied`, `transferred`) and a coaching rule that recognition alone is not secure understanding.
+- Error taxonomy (`slip`, `gap`, `misconception`, `retrieval-failure`) with a misconception ledger and a repair loop.
+- `loom_review_plan` for short interleaved reviews and `loom_progress_report` for mastery, calibration, weak dimensions, and unresolved errors.
+- `loom_assess_checkpoint` now returns `masteryLevel`, `closure`, `recommendedNext`, and `reason`, including a `contrast-and-retest` path for misconceptions.
+- `loom_review_plan` accepts `minutes` and `sessionId`, estimates each item, and chooses a review format from mastery.
+- `loom_frame_checkpoint` returns `qualityWarnings` for weak choice construction and vague grading criteria.
+- Optional `sourceRef`, `hintLevel`, and `latencyMs` on assessment; adaptive review intervals shorten after hints or low confidence and lengthen after confident accurate answers.
+- Notebook kinds for open questions, summaries, misconceptions, and sources.
 
 ### Changed
 

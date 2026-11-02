@@ -29,7 +29,7 @@ The answer and rationale never appear in the first result. A token is removed as
 
 Checkpoint cards deliberately remain ephemeral. Notebooks and learning-state files are persistent workspace artifacts. This avoids storing hidden answer material on disk while keeping the learner's useful record portable.
 
-Learning state schema version 2 adds an evidence ledger without invalidating version 1 sessions. Each stable concept accumulates attempts, successful retrievals, demonstrated dimensions, confidence calibration, hint dependence, transfer evidence, and a due date. `secured` remains a compact compatibility summary rather than the sole mastery signal. Route extensions preserve prerequisites discovered during Build without rewriting the route the learner approved.
+Learning state schema version 2 adds an evidence ledger without invalidating version 1 sessions. Each stable concept accumulates attempts, successful retrievals, demonstrated dimensions, a derived mastery level, confidence calibration, hint dependence, transfer evidence, error kinds, source references, and a due date. A separate misconception ledger records wrong models and their repair. `secured` remains a compact compatibility summary rather than the sole mastery signal; coaching uses `masteryLevel` and the dimensions. Route extensions preserve prerequisites discovered during Build without rewriting the route the learner approved.
 
 ## Portability
 

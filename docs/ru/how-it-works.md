@@ -61,7 +61,9 @@ Concept Loom
 | `loom_add_note` | Добавить полезное учебное событие. |
 | `loom_save_learning_state` | Сохранить маршрут и точку продолжения. |
 | `loom_load_learning_state` | Восстановить последнее или выбранное занятие. |
-| `loom_list_due_reviews` | Найти понятия для отложенного повторения. |
+| `loom_list_due_reviews` | Найти все понятия для отложенного повторения. |
+| `loom_review_plan` | Собрать короткий перемешанный план повторения. |
+| `loom_progress_report` | Показать mastery, калибровку, слабые измерения и ошибки. |
 | `loom_show_relation_map` | Вернуть Mermaid-блок прямо в разговор. |
 | `loom_show_text_diagram` | Вернуть моноширинную схему для терминала. |
 
@@ -70,6 +72,10 @@ Concept Loom
 `src/checkpoints.mjs` поддерживает выбор ответа, свободное воспроизведение, прогнозирование, поиск ошибок и перенос в новую ситуацию. Правильные ключи или закрытые критерии оценки хранятся за случайным токеном. Ученик не получает ответ, критерии или объяснение до своей попытки.
 
 Результат: `accurate`, `needs-repair` или `knowledge-gap`. Необязательная уверенность показывает правильную калибровку, излишнюю или недостаточную уверенность. Токен действует до шести часов, используется один раз и исчезает при перезапуске MCP.
+
+Evidence хранит `masteryLevel` (`unseen`, `recognized`, `recalled`, `applied`, `transferred`), `errorKind`, `misconceptions`, `sourceRef`, `hintLevel` и `latencyMs`. Choice считается только узнаванием: для закрепления нужны recall и application, для mastery — transfer. Интервал повторения сокращается при подсказке или низкой уверенности и удлиняется при уверенном точном ответе.
+
+`loom_frame_checkpoint` возвращает `qualityWarnings` — предупреждения о двух вариантах, мета-опциях, отрицаниях и слишком длинном правильном варианте. `loom_assess_checkpoint` возвращает `masteryLevel`, `closure`, `recommendedNext` и `reason`: например, после точного choice рекомендуется `free-recall`, после recall — `prediction`, после application — `transfer`. `loom_review_plan` принимает `minutes` и `sessionId`, а формат выбирает по mastery, а не только по прошлому формату.
 
 ## Конспект и схемы
 
