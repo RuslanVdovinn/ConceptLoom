@@ -74,6 +74,77 @@ test("frames and assesses an open transfer checkpoint without leaking criteria",
   assert.equal(result.criteria.length, 2);
 });
 
+test("supports a closed prediction checkpoint with choices", () => {
+  const card = composeCheckpoint({
+    format: "prediction",
+    prompt: "What will happen next?",
+    choices: [{ key: "a", label: "A" }, { key: "b", label: "B" }],
+    expected: "b",
+    rationale: "B follows from the model.",
+    mix: false,
+  });
+  assert.equal(card.mode, "closed");
+  assert.equal(card.choices.length, 2);
+  const result = assessCheckpoint({ token: card.token, selected: "b" });
+  assert.equal(result.mode, "closed");
+  assert.equal(result.format, "prediction");
+  assert.equal(result.outcome, "accurate");
+});
+
+test("keeps the token when assessment arguments are invalid", () => {
+  const card = composeCheckpoint({
+    format: "prediction",
+    prompt: "What will happen next?",
+    choices: [{ key: "a", label: "A" }, { key: "b", label: "B" }],
+    expected: "b",
+    rationale: "B follows from the model.",
+    mix: false,
+  });
+  assert.throws(() => assessCheckpoint({ token: card.token }), /selected/);
+  const result = assessCheckpoint({ token: card.token, selected: "b" });
+  assert.equal(result.outcome, "accurate");
+});
+
+test("treats empty choices and expected as an open checkpoint", () => {
+  for (const format of ["free-recall", "transfer"]) {
+    const card = composeCheckpoint({
+      format,
+      prompt: "Explain it in your own words.",
+      criteria: ["Names the mechanism", "Justifies the conclusion"],
+      rationale: "The mechanism explains the conclusion.",
+      choices: [],
+      expected: [],
+    });
+    assert.equal(card.mode, "open");
+    assert.equal("choices" in card, false);
+    const result = assessCheckpoint({
+      token: card.token,
+      response: "The mechanism explains the conclusion.",
+      verdict: "accurate",
+    });
+    assert.equal(result.mode, "open");
+    assert.equal(result.outcome, "accurate");
+  }
+});
+
+test("supports an open prediction checkpoint without choices", () => {
+  const card = composeCheckpoint({
+    format: "prediction",
+    prompt: "What will happen next?",
+    criteria: ["States the outcome", "Justifies it from the model"],
+    rationale: "The outcome follows from the model.",
+  });
+  assert.equal(card.mode, "open");
+  assert.equal("choices" in card, false);
+  const result = assessCheckpoint({
+    token: card.token,
+    response: "It will fail because the invariant is violated.",
+    verdict: "accurate",
+  });
+  assert.equal(result.mode, "open");
+  assert.equal(result.outcome, "accurate");
+});
+
 test("warns about weak choice and open-response quality", () => {
   const choice = composeCheckpoint({
     prompt: "Which option is NOT correct?",

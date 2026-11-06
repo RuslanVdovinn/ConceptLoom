@@ -90,7 +90,7 @@ The shared method lives in `shared/coaching-reference.md`. Directories under `ad
 
 ### Checkpoints
 
-`src/checkpoints.mjs` supports choice, free-recall, prediction, debugging, and transfer checks. It stores expected keys or private grading criteria behind a random token. The learner receives only the public prompt, response instructions, token, and an “I do not know yet” option—not the answer, criteria, or rationale.
+`src/checkpoints.mjs` supports choice, free-recall, prediction, debugging, and transfer checks. Any format can be closed (`choices` + `expected`) or open (`criteria`); `loom_frame_checkpoint` returns a `mode` that selects the grading path—`selected` for closed or `response` + `verdict` for open. It stores expected keys or private grading criteria behind a random token. The learner receives only the public prompt, response instructions, token, and an “I do not know yet” option—not the answer, criteria, or rationale.
 
 Results are `accurate`, `needs-repair`, or `knowledge-gap`. An optional confidence score records whether the learner was well calibrated, overconfident, or underconfident. Tokens live in memory for up to six hours, work once, and disappear when the MCP process restarts.
 

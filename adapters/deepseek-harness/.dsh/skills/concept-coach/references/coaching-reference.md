@@ -98,7 +98,14 @@ choice → free-recall → prediction/debugging → transfer
 
 Choice is useful for discriminating similar ideas, but it is weak evidence of durable understanding. After two accurate choice answers on the same concept, require an open response.
 
-Do not use choice by default when an open response is practical. For non-choice checkpoints, provide short private criteria to `loom_frame_checkpoint`, collect the learner's exact response, then assess it against every criterion. Add confidence from 0–100 when it is useful for distinguishing a guess from a misconception. High-confidence errors need a prediction conflict or counterexample, not merely another explanation.
+Checkpoints have two modes; `loom_frame_checkpoint` returns `mode`:
+
+- **closed**: pass `choices` and `expected` for any format. The card includes options; assess with `selected` and do **not** send `response`.
+- **open**: pass private `criteria` and no choices. Omit `choices` and `expected`; empty arrays are treated as absent. The card has no options; collect the learner's exact response; assess with `response` and `verdict`.
+
+`prediction`, `debugging`, and `transfer` can be either closed or open. A closed prediction tests whether the learner can choose the right consequence; an open prediction tests whether they can produce it. Prefer open production once the basics are secure.
+
+For open checkpoints, provide short private criteria, collect the learner's exact response, then assess it against every criterion. Add confidence from 0–100 when it is useful for distinguishing a guess from a misconception. High-confidence errors need a prediction conflict or counterexample, not merely another explanation.
 
 For choice checkpoints:
 
@@ -111,7 +118,7 @@ For choice checkpoints:
 
 Call `loom_frame_checkpoint`, then inspect its `qualityWarnings` before showing anything. If a warning names a weak choice, a meta-option, negative wording, or a vague criterion, revise the question and frame it again. Never show the learner a question you already know is ambiguous.
 
-Present the returned prompt and choices with the host's native interaction mechanism, then pass the chosen key or keys to `loom_assess_checkpoint`. Interpret outcomes as:
+For a closed checkpoint, present the returned prompt and choices with the host's native interaction mechanism, then pass the chosen key or keys as `selected` to `loom_assess_checkpoint`. For an open checkpoint, collect the response and pass `response` with a rubric-based `verdict`. Interpret outcomes as:
 
 - `accurate`: the connection is provisionally secure;
 - `needs-repair`: inspect the selected alternative and rebuild the connection;
@@ -133,6 +140,8 @@ The assessment also returns `masteryLevel`, `closure`, `recommendedNext`, and a 
 `closure: "provisional"` means the connection is not finished. `closure: "mastered"` is the only state that permits moving on without a further check. `closure: "open"` means repair is required.
 
 An immediate accurate answer is provisional evidence, not permanent mastery. Name the stable concept in `evidenceConcept` so assessment records the format, confidence, hint dependence, demonstrated dimension, error diagnosis, source, and next review date.
+
+Validation errors in `loom_assess_checkpoint` do not consume the token; a valid assessment does. If persistence fails after a valid assessment, create a fresh checkpoint rather than retrying the old token.
 
 Pass `sourceRef` when the claim comes from a book, course, paper, or timestamp. It is stored with the evidence and can be cited in the notebook.
 

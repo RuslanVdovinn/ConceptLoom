@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 const activeCards = new Map();
 const CARD_TTL_MS = 6 * 60 * 60 * 1000;
 const FORMATS = new Set(["choice", "free-recall", "prediction", "debugging", "transfer"]);
+const VERDICTS = new Set(["accurate", "needs-repair", "knowledge-gap"]);
 
 function cleanText(value, label) {
   if (typeof value !== "string" || !value.trim()) {
@@ -26,9 +27,9 @@ function discardExpired(now = Date.now()) {
   }
 }
 
-function buildQualityWarnings({ prompt, choices, criteria, format }) {
+function buildQualityWarnings({ prompt, choices, criteria, closed }) {
   const warnings = [];
-  if (format === "choice") {
+  if (closed) {
     const labels = choices.map((choice) => choice.label);
     const lengths = labels.map((label) => label.length).sort((left, right) => left - right);
     const median = lengths[Math.floor(lengths.length / 2)] ?? 0;
@@ -66,17 +67,33 @@ export function composeCheckpoint(input, random = Math.random) {
   const format = input.format === undefined ? "choice" : cleanText(input.format, "format");
   if (!FORMATS.has(format)) throw new Error(`format must be one of: ${[...FORMATS].join(", ")}`);
   const sourceRef = typeof input.sourceRef === "string" && input.sourceRef.trim() ? input.sourceRef.trim() : undefined;
-
+  const hasChoices = Array.isArray(input.choices) && input.choices.length > 0;
+  const hasExpected = !(Array.isArray(input.expected) && input.expected.length === 0)
+    && input.expected !== undefined
+    && input.expected !== null
+    && input.expected !== "";
+  const closed = format === "choice" || hasChoices || hasExpected;
   const token = randomBytes(18).toString("base64url");
-  if (format !== "choice") {
+
+  if (!closed) {
     if (!Array.isArray(input.criteria) || input.criteria.length === 0) {
       throw new Error("criteria must contain at least one entry for an open checkpoint");
     }
     const criteria = input.criteria.map((entry, index) => cleanText(entry, `criteria[${index}]`));
-    const qualityWarnings = buildQualityWarnings({ prompt, choices: [], criteria, format });
-    activeCards.set(token, { createdAt: Date.now(), prompt, rationale, format, criteria, sourceRef, qualityWarnings });
+    const qualityWarnings = buildQualityWarnings({ prompt, choices: [], criteria, closed: false });
+    activeCards.set(token, {
+      createdAt: Date.now(),
+      mode: "open",
+      prompt,
+      rationale,
+      format,
+      criteria,
+      sourceRef,
+      qualityWarnings,
+    });
     return {
       token,
+      mode: "open",
       prompt,
       format,
       sourceRef,
@@ -86,8 +103,14 @@ export function composeCheckpoint(input, random = Math.random) {
     };
   }
 
-  if (!Array.isArray(input.choices) || input.choices.length < 2) {
-    throw new Error("choices must contain at least two entries");
+  if (!hasChoices || input.choices.length < 2) {
+    throw new Error(
+      "closed checkpoints require choices with at least two entries; " +
+      "omit choices and expected, and provide criteria, for an open checkpoint",
+    );
+  }
+  if (!hasExpected) {
+    throw new Error("expected must name at least one choice key for a closed checkpoint");
   }
 
   const knownKeys = new Set();
@@ -112,9 +135,10 @@ export function composeCheckpoint(input, random = Math.random) {
   }
 
   const arranged = input.mix === false ? choices : rearrange(choices, random);
-  const qualityWarnings = buildQualityWarnings({ prompt, choices, criteria: [], format });
+  const qualityWarnings = buildQualityWarnings({ prompt, choices, criteria: [], closed: true });
   activeCards.set(token, {
     createdAt: Date.now(),
+    mode: "closed",
     prompt,
     rationale,
     choices: arranged,
@@ -127,6 +151,7 @@ export function composeCheckpoint(input, random = Math.random) {
 
   return {
     token,
+    mode: "closed",
     prompt,
     format,
     sourceRef,
@@ -145,22 +170,23 @@ export function assessCheckpoint(input) {
   const token = cleanText(input.token, "token");
   const card = activeCards.get(token);
   if (!card) throw new Error("checkpoint token is unknown or expired");
-  activeCards.delete(token);
 
   const confidence = input.confidence === undefined ? undefined : Number(input.confidence);
   if (confidence !== undefined && (!Number.isInteger(confidence) || confidence < 0 || confidence > 100)) {
     throw new Error("confidence must be an integer from 0 to 100");
   }
 
-  if (card.format !== "choice") {
+  if (card.mode === "open") {
     const response = cleanText(input.response, "response");
     const admittedGap = response === "__gap__";
     const verdict = admittedGap ? "knowledge-gap" : cleanText(input.verdict, "verdict");
-    if (!new Set(["accurate", "needs-repair", "knowledge-gap"]).has(verdict)) {
+    if (!VERDICTS.has(verdict)) {
       throw new Error("verdict must be accurate, needs-repair, or knowledge-gap");
     }
+    activeCards.delete(token);
     const accurate = verdict === "accurate";
     return {
+      mode: "open",
       format: card.format,
       outcome: verdict,
       accurate,
@@ -190,13 +216,16 @@ export function assessCheckpoint(input) {
   const accurate = !admittedGap
     && selectionSet.size === card.expectedSet.size
     && [...selectionSet].every((key) => card.expectedSet.has(key));
+  activeCards.delete(token);
 
   return {
+    mode: "closed",
     format: card.format,
     outcome: admittedGap ? "knowledge-gap" : accurate ? "accurate" : "needs-repair",
     accurate,
     selected,
     expected: [...card.expectedSet],
+    multiple: card.multiple,
     rationale: card.rationale,
     sourceRef: card.sourceRef,
     confidence,

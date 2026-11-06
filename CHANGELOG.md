@@ -27,6 +27,8 @@ All notable changes to Concept Loom are documented here.
 
 - Generated `.dsh/mcp.json` now uses `cwd: ".."`. `dsh-workspace-mcp` resolves `cwd` relative to the config file, so `"."` pointed the bridge at the hidden `.dsh` folder; `".."` restores the learning workspace root for notebooks and session state.
 - Due-review discovery now falls back to `lastSuccessfulRetrieval`, `lastAttemptAt`, or the session's `updatedAt` for legacy evidence without `reviewAfter`, and marks those entries with `inferred: true`.
+- Closed checkpoints now work for `prediction`, `debugging`, and `transfer`: any format with `choices` and `expected` is graded from `selected`, while `criteria` selects the open `response` path. The public card returns `mode`.
+- `loom_assess_checkpoint` validates its arguments before consuming the token, so a malformed call no longer burns a valid checkpoint; a successful assessment still consumes it.
 
 ## 1.1.0 — 2026-10-06
 

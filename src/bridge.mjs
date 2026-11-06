@@ -19,7 +19,7 @@ const workspace = process.cwd();
 const toolCatalog = [
   {
     name: "loom_frame_checkpoint",
-    description: "Create a concealed-answer checkpoint. Supports choice, free-recall, prediction, debugging, and transfer formats. Present only the returned public card, then assess the learner's response.",
+    description: "Create a concealed-answer checkpoint. Any format can be closed (choices + expected) or open (criteria); choice is always closed. Present only the returned public card, then assess the learner's response.",
     inputSchema: {
       type: "object",
       required: ["prompt", "rationale"],
@@ -28,15 +28,15 @@ const toolCatalog = [
         format: { enum: ["choice", "free-recall", "prediction", "debugging", "transfer"], default: "choice" },
         choices: {
           type: "array",
-          minItems: 2,
+          description: "Closed form for any format; provide with expected. Omit or leave empty for an open checkpoint.",
           items: {
             type: "object",
             required: ["key", "label"],
             properties: { key: { type: "string" }, label: { type: "string" } },
           },
         },
-        expected: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] },
-        criteria: { type: "array", items: { type: "string" }, description: "Private grading criteria required for non-choice formats." },
+        expected: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }], description: "Correct key or keys for the closed form." },
+        criteria: { type: "array", items: { type: "string" }, description: "Private grading criteria for the open form; required when choices and expected are omitted." },
         rationale: { type: "string" },
         multiple: { type: "boolean", default: false },
         mix: { type: "boolean", default: true },
@@ -52,9 +52,9 @@ const toolCatalog = [
       required: ["token", "sessionId", "nextStep"],
       properties: {
         token: { type: "string" },
-        selected: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] },
-        response: { type: "string", description: "Learner's response for a non-choice checkpoint, or __gap__." },
-        verdict: { enum: ["accurate", "needs-repair", "knowledge-gap"], description: "Rubric-based outcome for a non-choice response." },
+        selected: { oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }], description: "Chosen key or keys for a closed checkpoint." },
+        response: { type: "string", description: "Learner's response for an open checkpoint, or __gap__." },
+        verdict: { enum: ["accurate", "needs-repair", "knowledge-gap"], description: "Rubric-based outcome for an open response." },
         confidence: { type: "integer", minimum: 0, maximum: 100 },
         sessionId: { type: "string" },
         currentStep: { type: "string" },
