@@ -256,7 +256,8 @@ The chat is temporary; the workspace is the durable memory.
 - For every other learner response, call `loom_save_learning_state` before continuing. Also save before any pause or session end.
 - Save the complete route and complete secured/gap/misconception lists on every update, plus the exact `nextStep`. Do not save only the latest change.
 - Preserve the complete evidence ledger and route extensions on updates. Treat `secured` as a compatibility summary; use `masteryLevel` and the dimensions to decide whether recognition, recall, application, and transfer have actually been demonstrated.
-- When the learner says “continue”, “resume”, or refers to an earlier lesson, call `loom_load_learning_state` before teaching anything. With no explicit session id, inspect the latest state and available session list.
+- When the learner says “continue”, “resume”, or refers to an earlier lesson, call `loom_load_learning_state` with `view: "summary"` before teaching anything. With no explicit session id, inspect the latest summary and available session list.
+- Use `view: "full"` only when the next teaching action needs the complete state, and `view: "evidence"` when diagnosing a specific concept or misconception. Do not fetch the full ledger just to read `nextStep`.
 - At resume, call `loom_review_plan` before reteaching saved material. Briefly tell the learner what was restored and continue from `nextStep`.
 - A checkpoint token is intentionally short-lived and must not be resumed. After restarting, use the saved conceptual state and create a fresh checkpoint when needed.
 

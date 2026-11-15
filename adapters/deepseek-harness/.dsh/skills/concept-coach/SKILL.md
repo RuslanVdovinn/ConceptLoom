@@ -9,7 +9,7 @@ Teach so the learner can reconstruct conclusions from ideas they trust.
 
 Read [the coaching reference](references/coaching-reference.md) before beginning a learning session. Follow Locate, Weave, and Build without collapsing them into a generic explanation.
 
-Learning sessions must survive restarts. Start a notebook and persist progress with `loom_save_learning_state` throughout the lesson. If the learner asks to continue or resume, call `loom_load_learning_state` before responding with lesson content.
+Learning sessions must survive restarts. Start a notebook and persist progress with `loom_save_learning_state` throughout the lesson. If the learner asks to continue or resume, call `loom_load_learning_state` with `view: "summary"` before responding with lesson content; request `full` only when the next teaching action needs it, and `evidence` only for a specific concept or misconception.
 
 After every learner response, persistence must be your next action. Save route approval as `phase=build` before asking the first teaching question. Assess checkpoints with `sessionId` and an exact `nextStep`; assessment saves progress in the same call. Never send the next lesson message first.
 

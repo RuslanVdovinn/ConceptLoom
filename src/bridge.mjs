@@ -168,10 +168,18 @@ const toolCatalog = [
   },
   {
     name: "loom_load_learning_state",
-    description: "Load a saved learning session from the workspace. Without sessionId, returns the most recently updated state and a list of all saved sessions. Always call when the learner asks to continue or resume.",
+    description: "Load a saved learning session. Use view=summary for resume orientation without the evidence ledger, view=evidence for the ledger and misconceptions, or view=full (default) for the complete state. Without sessionId, also returns all session summaries.",
     inputSchema: {
       type: "object",
-      properties: { sessionId: { type: "string" } },
+      properties: {
+        sessionId: { type: "string" },
+        view: {
+          enum: ["summary", "full", "evidence"],
+          default: "full",
+          description: "summary = metadata, route, nextStep, counts, mastery, due count; evidence = evidence and misconceptions; full = everything.",
+        },
+        now: { type: "string", description: "Optional ISO timestamp used by summary due counts." },
+      },
     },
   },
   {

@@ -81,12 +81,14 @@ The shared method lives in `shared/coaching-reference.md`. Directories under `ad
 | `loom_start_notebook` | Create or open a Markdown notebook. |
 | `loom_add_note` | Append a useful learning event. |
 | `loom_save_learning_state` | Persist the route and exact resume point. |
-| `loom_load_learning_state` | Restore the latest or a named learning session. |
+| `loom_load_learning_state` | Restore a session as `summary`, `full`, or `evidence`. |
 | `loom_list_due_reviews` | Find every concept due for delayed retrieval. |
 | `loom_review_plan` | Build a short interleaved review plan. |
 | `loom_progress_report` | Summarize mastery, calibration, weak dimensions, and errors. |
 | `loom_show_relation_map` | Return a Mermaid block for the conversation. |
 | `loom_show_text_diagram` | Return a monospace diagram for the terminal. |
+
+`loom_load_learning_state` returns the full state by default. `view: "summary"` returns the route, current step, `nextStep`, counts, mastery, and `dueCount` without the evidence ledger—enough to resume. `view: "evidence"` returns only the evidence and misconception ledger for targeted diagnosis.
 
 ### Checkpoints
 

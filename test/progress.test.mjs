@@ -390,3 +390,53 @@ test("builds an interleaved review plan and a progress report", async () => {
   assert.equal(report.dueCount, 1);
   assert.match(report.markdown, /Progress: Alpha/);
 });
+
+test("loads summary and evidence views without the full snapshot", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-progress-"));
+  await saveLearningState(root, {
+    sessionId: "views",
+    topic: "Views",
+    goal: "Load only what is needed",
+    phase: "build",
+    route: ["first", "second"],
+    secured: ["first"],
+    nextStep: "Explain second",
+    evidence: {
+      first: {
+        masteryLevel: "recognized",
+        dimensions: { recognition: "demonstrated" },
+        reviewAfter: "2026-01-01T00:00:00.000Z",
+      },
+    },
+  });
+
+  const summary = await loadLearningState(root, {
+    sessionId: "views",
+    view: "summary",
+    now: "2026-01-03T00:00:00.000Z",
+  });
+  assert.equal(summary.state.sessionId, "views");
+  assert.equal(summary.state.nextStep, "Explain second");
+  assert.equal(summary.state.route.length, 2);
+  assert.equal(summary.state.counts.evidence, 1);
+  assert.equal(summary.state.mastery.recognized, 1);
+  assert.equal(summary.state.dueCount, 1);
+  assert.equal("evidence" in summary.state, false);
+
+  const evidence = await loadLearningState(root, { sessionId: "views", view: "evidence" });
+  assert.ok(evidence.state.evidence.first);
+  assert.equal("route" in evidence.state, false);
+
+  const full = await loadLearningState(root, { sessionId: "views" });
+  assert.ok(full.state.evidence.first);
+  assert.equal(full.state.route.length, 2);
+
+  const latest = await loadLearningState(root, { view: "summary", now: "2026-01-03T00:00:00.000Z" });
+  assert.equal(latest.state.sessionId, "views");
+  assert.equal(latest.sessions.length, 1);
+
+  await assert.rejects(
+    loadLearningState(root, { sessionId: "views", view: "unknown" }),
+    /view must be one of/,
+  );
+});

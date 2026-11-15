@@ -30,6 +30,7 @@ It works with topics you explore from scratch and with your own books, courses, 
 - Plan short interleaved reviews with a time budget and adaptive spacing.
 - Warn about weak checkpoint questions before showing them.
 - Keep concise Markdown learning notes between sessions.
+- Resume from a compact summary without loading the entire evidence ledger.
 - Use the same workflow in Codex, Claude Code, OpenCode, and DeepSeek Harness.
 - Show compact text or Mermaid diagrams directly in the conversation.
 

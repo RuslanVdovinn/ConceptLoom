@@ -15,6 +15,7 @@ All notable changes to Concept Loom are documented here.
 - `loom_assess_checkpoint` now returns `masteryLevel`, `closure`, `recommendedNext`, and `reason`, including a `contrast-and-retest` path for misconceptions.
 - `loom_review_plan` accepts `minutes` and `sessionId`, estimates each item, and chooses a review format from mastery.
 - `loom_frame_checkpoint` returns `qualityWarnings` for weak choice construction and vague grading criteria.
+- `loom_load_learning_state` accepts `view: "summary" | "full" | "evidence"`; summary returns route, `nextStep`, counts, mastery, and due count without the evidence ledger.
 - Optional `sourceRef`, `hintLevel`, and `latencyMs` on assessment; adaptive review intervals shorten after hints or low confidence and lengthen after confident accurate answers.
 - Notebook kinds for open questions, summaries, misconceptions, and sources.
 

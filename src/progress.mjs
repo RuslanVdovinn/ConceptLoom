@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 
 const PHASES = new Set(["locate", "weave", "build", "transfer", "review", "complete"]);
 const MODES = new Set(["guided", "practice", "review", "challenge"]);
+const VIEWS = new Set(["full", "summary", "evidence"]);
 const CHECKPOINT_DIMENSIONS = {
   choice: "recognition",
   "free-recall": "recall",
@@ -160,6 +161,87 @@ export function buildNextRecommendation(evidence, assessment = {}) {
   };
 }
 
+function parseNow(value) {
+  if (value === undefined) return new Date();
+  const now = new Date(requiredText(value, "now"));
+  if (Number.isNaN(now.getTime())) throw new Error("now must be an ISO date");
+  return now;
+}
+
+function reviewDateForEvidence(evidence, stateUpdatedAt) {
+  if (evidence.reviewAfter) {
+    const stored = new Date(evidence.reviewAfter);
+    if (!Number.isNaN(stored.getTime())) return { reviewAt: stored, inferred: false };
+  }
+  const base = new Date(evidence.lastSuccessfulRetrieval ?? evidence.lastAttemptAt ?? stateUpdatedAt);
+  if (Number.isNaN(base.getTime())) return null;
+  return {
+    reviewAt: addDays(base, reviewIntervalDays(evidence.consecutiveSuccesses)),
+    inferred: true,
+  };
+}
+
+function dueCountForState(state, now) {
+  let count = 0;
+  for (const evidence of Object.values(state.evidence ?? {})) {
+    if (!evidence) continue;
+    const review = reviewDateForEvidence(evidence, state.updatedAt);
+    if (review && review.reviewAt <= now) count += 1;
+  }
+  return count;
+}
+
+function projectState(state, view, now) {
+  if (view === "full") return state;
+  if (view === "evidence") {
+    return {
+      schemaVersion: state.schemaVersion,
+      sessionId: state.sessionId,
+      topic: state.topic,
+      goal: state.goal,
+      revision: state.revision,
+      updatedAt: state.updatedAt,
+      evidence: state.evidence ?? {},
+      misconceptions: state.misconceptions ?? [],
+      lastCheckpoint: state.lastCheckpoint,
+    };
+  }
+
+  const evidenceEntries = Object.values(state.evidence ?? {});
+  const mastery = Object.fromEntries(MASTERY_LEVELS.map((level) => [level, 0]));
+  for (const evidence of evidenceEntries) {
+    if (!evidence) continue;
+    const level = evidence.masteryLevel ?? deriveMastery(evidence.dimensions, evidence.transferPassed === true);
+    mastery[level] = (mastery[level] ?? 0) + 1;
+  }
+  return {
+    schemaVersion: state.schemaVersion,
+    sessionId: state.sessionId,
+    topic: state.topic,
+    goal: state.goal,
+    phase: state.phase,
+    mode: state.mode,
+    route: state.route ?? [],
+    currentStep: state.currentStep,
+    nextStep: state.nextStep,
+    notebookPath: state.notebookPath,
+    learnerContext: state.learnerContext,
+    revision: state.revision,
+    createdAt: state.createdAt,
+    updatedAt: state.updatedAt,
+    counts: {
+      route: (state.route ?? []).length,
+      secured: (state.secured ?? []).length,
+      gaps: (state.gaps ?? []).length,
+      evidence: evidenceEntries.length,
+      routeExtensions: (state.routeExtensions ?? []).length,
+      unresolvedMisconceptions: (state.misconceptions ?? []).filter((entry) => entry.repaired !== true).length,
+    },
+    mastery,
+    dueCount: dueCountForState(state, now),
+  };
+}
+
 function safeSessionId(value) {
   const id = requiredText(value, "sessionId");
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(id)) {
@@ -226,11 +308,15 @@ export async function saveLearningState(baseDirectory, input) {
 }
 
 export async function loadLearningState(baseDirectory, input = {}) {
+  const view = input.view === undefined ? "full" : requiredText(input.view, "view").toLowerCase();
+  if (!VIEWS.has(view)) throw new Error(`view must be one of: ${[...VIEWS].join(", ")}`);
+  const now = view === "summary" ? parseNow(input.now) : undefined;
+
   if (input.sessionId) {
     const sessionId = safeSessionId(input.sessionId);
     const state = await readState(statePath(baseDirectory, sessionId));
     if (!state) throw new Error(`learning session '${sessionId}' was not found`);
-    return { state };
+    return { state: projectState(state, view, now) };
   }
 
   const directory = storageDirectory(baseDirectory);
@@ -246,7 +332,7 @@ export async function loadLearningState(baseDirectory, input = {}) {
     .filter(Boolean)
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   return {
-    state: states[0] ?? null,
+    state: states[0] ? projectState(states[0], view, now) : null,
     sessions: states.map(({ sessionId, topic, goal, phase, nextStep, updatedAt }) => ({
       sessionId,
       topic,
@@ -267,25 +353,15 @@ export async function listDueReviews(baseDirectory, input = {}) {
     const { state } = await loadLearningState(baseDirectory, { sessionId: summary.sessionId });
     for (const [concept, evidence] of Object.entries(state.evidence ?? {})) {
       if (!evidence) continue;
-      let inferred = false;
-      let reviewAt = null;
-      if (evidence.reviewAfter) {
-        const stored = new Date(evidence.reviewAfter);
-        if (!Number.isNaN(stored.getTime())) reviewAt = stored;
-      }
-      if (!reviewAt) {
-        inferred = true;
-        const base = new Date(evidence.lastSuccessfulRetrieval ?? evidence.lastAttemptAt ?? state.updatedAt);
-        if (Number.isNaN(base.getTime())) continue;
-        reviewAt = addDays(base, reviewIntervalDays(evidence.consecutiveSuccesses));
-      }
-      if (reviewAt <= now) {
+      const review = reviewDateForEvidence(evidence, state.updatedAt);
+      if (!review) continue;
+      if (review.reviewAt <= now) {
         due.push({
           sessionId: state.sessionId,
           topic: state.topic,
           concept,
-          reviewAfter: reviewAt.toISOString(),
-          inferred,
+          reviewAfter: review.reviewAt.toISOString(),
+          inferred: review.inferred,
           masteryLevel: evidence.masteryLevel ?? deriveMastery(evidence.dimensions, evidence.transferPassed === true),
           lastFormat: evidence.lastFormat,
           lastOutcome: evidence.lastOutcome,

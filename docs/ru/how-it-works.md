@@ -60,12 +60,14 @@ Concept Loom
 | `loom_start_notebook` | Создать или открыть Markdown-конспект. |
 | `loom_add_note` | Добавить полезное учебное событие. |
 | `loom_save_learning_state` | Сохранить маршрут и точку продолжения. |
-| `loom_load_learning_state` | Восстановить последнее или выбранное занятие. |
+| `loom_load_learning_state` | Восстановить занятие: `summary`, `full` или `evidence`. |
 | `loom_list_due_reviews` | Найти все понятия для отложенного повторения. |
 | `loom_review_plan` | Собрать короткий перемешанный план повторения. |
 | `loom_progress_report` | Показать mastery, калибровку, слабые измерения и ошибки. |
 | `loom_show_relation_map` | Вернуть Mermaid-блок прямо в разговор. |
 | `loom_show_text_diagram` | Вернуть моноширинную схему для терминала. |
+
+`loom_load_learning_state` по умолчанию отдаёт полное состояние. `view: "summary"` возвращает маршрут, текущий шаг, `nextStep`, счётчики, mastery и `dueCount` без журнала evidence — этого достаточно для продолжения. `view: "evidence"` отдаёт только evidence и журнал заблуждений для точечного разбора.
 
 ## Проверочные вопросы
 
