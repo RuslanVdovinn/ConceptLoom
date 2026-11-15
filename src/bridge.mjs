@@ -68,8 +68,10 @@ const toolCatalog = [
         errorKind: { enum: ["slip", "gap", "misconception", "retrieval-failure"], description: "Diagnosis for a non-accurate attempt." },
         misconception: { type: "string", description: "Wrong model the learner demonstrated." },
         misconceptionCorrection: { type: "string", description: "Counterexample or corrected model used to repair it." },
-        misconceptionRepaired: { type: "boolean", default: false, description: "Mark this concept's unresolved misconceptions as repaired." },
+        misconceptionConcept: { type: "string", description: "Exact concept name to attach or repair; defaults to evidenceConcept." },
+        misconceptionRepaired: { type: "boolean", default: false, description: "Mark unresolved misconceptions for misconceptionConcept as repaired." },
         sourceRef: { type: "string", description: "Optional source location for this concept." },
+        includeLearningState: { type: "boolean", default: false, description: "Include the complete learning state in the response; the default returns a compact result." },
         note: { type: "string" },
       },
     },
@@ -125,10 +127,10 @@ const toolCatalog = [
         goal: { type: "string" },
         phase: { enum: ["locate", "weave", "build", "transfer", "review", "complete"] },
         mode: { enum: ["guided", "practice", "review", "challenge"], default: "guided" },
-        notebookPath: { type: "string" },
-        route: { type: "array", items: { type: "string" } },
-        secured: { type: "array", items: { type: "string" } },
-        gaps: { type: "array", items: { type: "string" } },
+        notebookPath: { type: "string", description: "Omit to preserve the previous path." },
+        route: { type: "array", items: { type: "string" }, description: "Omit to preserve the previous route; send [] to clear." },
+        secured: { type: "array", items: { type: "string" }, description: "Omit to preserve the previous list; send [] to clear." },
+        gaps: { type: "array", items: { type: "string" }, description: "Omit to preserve the previous list; send [] to clear." },
         misconceptions: {
           type: "array",
           items: {
@@ -145,7 +147,7 @@ const toolCatalog = [
             },
           },
         },
-        evidence: { type: "object", description: "Per-concept evidence ledger; preserve the complete object on updates." },
+        evidence: { type: "object", description: "Per-concept evidence ledger; partial updates merge by concept key and omitted concepts are preserved." },
         routeExtensions: {
           type: "array",
           description: "Prerequisites discovered after route approval; additions do not replace the approved route.",
@@ -247,7 +249,18 @@ async function invokeTool(name, args) {
       const evidenceConcept = args.evidenceConcept ?? args.securedConnection ?? args.currentStep ?? learningState.currentStep;
       const evidence = evidenceConcept ? learningState.evidence?.[evidenceConcept] : undefined;
       const recommendation = buildNextRecommendation(evidence, assessment);
-      return textResult({ ...assessment, ...recommendation, learningState });
+      const result = {
+        ...assessment,
+        ...recommendation,
+        sessionId: args.sessionId,
+        nextStep: learningState.nextStep,
+        revision: learningState.revision,
+      };
+      if (learningState.lastCheckpoint?.misconceptionRepair) {
+        result.misconceptionRepair = learningState.lastCheckpoint.misconceptionRepair;
+      }
+      if (args.includeLearningState === true) result.learningState = learningState;
+      return textResult(result);
     }
     case "loom_start_notebook": {
       const path = await beginNotebook(workspace, args);

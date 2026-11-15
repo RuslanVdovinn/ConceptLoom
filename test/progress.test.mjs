@@ -440,3 +440,141 @@ test("loads summary and evidence views without the full snapshot", async () => {
     /view must be one of/,
   );
 });
+
+test("merges partial evidence and says when a failed validation left state unchanged", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-progress-"));
+  const base = {
+    sessionId: "merge",
+    topic: "Merge",
+    goal: "Keep evidence",
+    phase: "build",
+    nextStep: "Next",
+    route: ["first", "second"],
+    secured: ["first"],
+    notebookPath: "notes.md",
+    currentStep: "first",
+    evidence: {
+      alpha: { attempts: 1 },
+      beta: { attempts: 1 },
+    },
+  };
+  await saveLearningState(root, base);
+  const updated = await saveLearningState(root, {
+    sessionId: "merge",
+    topic: "Merge",
+    goal: "Keep evidence",
+    phase: "build",
+    nextStep: "Next",
+    evidence: { beta: { attempts: 2 } },
+  });
+  assert.deepEqual(updated.evidence.alpha, { attempts: 1 });
+  assert.deepEqual(updated.evidence.beta, { attempts: 2 });
+  assert.deepEqual(updated.route, ["first", "second"]);
+  assert.deepEqual(updated.secured, ["first"]);
+  assert.equal(updated.notebookPath, "notes.md");
+  assert.equal(updated.currentStep, "first");
+
+  await assert.rejects(
+    saveLearningState(root, { ...base, goal: "" }),
+    /learning state was not changed/,
+  );
+  const restored = await loadLearningState(root, { sessionId: "merge" });
+  assert.equal(restored.state.revision, 2);
+  assert.deepEqual(restored.state.evidence.alpha, { attempts: 1 });
+});
+
+test("applies misconception repair by explicit concept and warns on a mismatch", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-progress-"));
+  await saveLearningState(root, {
+    sessionId: "repair",
+    topic: "Repair",
+    goal: "Fix the model",
+    phase: "build",
+    nextStep: "Start",
+  });
+
+  const first = composeCheckpoint({
+    format: "free-recall",
+    prompt: "Explain bias.",
+    criteria: ["Names the role of bias"],
+    rationale: "Bias is an anchor.",
+  });
+  let state = await recordCheckpointAssessment(root, {
+    sessionId: "repair",
+    currentStep: "bias as an anchor",
+    nextStep: "Repair bias",
+    securedConnection: "bias as an anchor",
+    evidenceConcept: "bias as an anchor",
+    misconceptionConcept: "bias",
+    misconception: "Treats bias as a separate layer.",
+    errorKind: "misconception",
+  }, assessCheckpoint({ token: first.token, response: "It is a separate layer.", verdict: "needs-repair" }));
+  assert.equal(state.misconceptions[0].concept, "bias");
+
+  const repair = composeCheckpoint({
+    format: "free-recall",
+    prompt: "Explain bias again.",
+    criteria: ["Names the role of bias"],
+    rationale: "Bias is an anchor.",
+  });
+  state = await recordCheckpointAssessment(root, {
+    sessionId: "repair",
+    currentStep: "bias as an anchor",
+    nextStep: "Next",
+    securedConnection: "bias as an anchor",
+    evidenceConcept: "bias as an anchor",
+    misconceptionConcept: "bias",
+    misconceptionRepaired: true,
+  }, assessCheckpoint({ token: repair.token, response: "Bias is the anchor.", verdict: "accurate" }));
+  assert.equal(state.misconceptions[0].repaired, true);
+  assert.equal(state.lastCheckpoint.misconceptionRepair.applied, 1);
+
+  const mismatch = composeCheckpoint({
+    format: "free-recall",
+    prompt: "Explain the other idea.",
+    criteria: ["Names the idea"],
+    rationale: "The idea matters.",
+  });
+  state = await recordCheckpointAssessment(root, {
+    sessionId: "repair",
+    currentStep: "other",
+    nextStep: "Next",
+    securedConnection: "other",
+    evidenceConcept: "other",
+    misconceptionConcept: "missing",
+    misconceptionRepaired: true,
+  }, assessCheckpoint({ token: mismatch.token, response: "The idea.", verdict: "accurate" }));
+  assert.equal(state.lastCheckpoint.misconceptionRepair.applied, 0);
+  assert.match(state.lastCheckpoint.misconceptionRepair.warning, /no unresolved misconception/);
+});
+
+test("adds a repair allowance to review estimates for error-prone concepts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "loom-progress-"));
+  await saveLearningState(root, {
+    sessionId: "risk",
+    topic: "Risk",
+    goal: "Repair risk",
+    phase: "review",
+    nextStep: "Review",
+  });
+  const card = composeCheckpoint({
+    format: "free-recall",
+    prompt: "Explain the mechanism.",
+    criteria: ["Names the mechanism"],
+    rationale: "The mechanism matters.",
+  });
+  await recordCheckpointAssessment(root, {
+    sessionId: "risk",
+    currentStep: "mechanism",
+    nextStep: "Repair",
+    securedConnection: "mechanism",
+    evidenceConcept: "mechanism",
+    errorKind: "misconception",
+    misconception: "Separates the mechanism from its effect.",
+  }, assessCheckpoint({ token: card.token, response: "They are separate.", verdict: "needs-repair" }));
+
+  const plan = await buildReviewPlan(root, { now: "2100-01-01T00:00:00.000Z" });
+  assert.equal(plan.plan.length, 1);
+  assert.ok(plan.plan[0].repairAllowance >= 5);
+  assert.ok(plan.plan[0].estimatedMinutes > plan.plan[0].baseMinutes);
+});

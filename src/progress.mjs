@@ -268,37 +268,47 @@ async function readState(path) {
 }
 
 export async function saveLearningState(baseDirectory, input) {
-  const sessionId = safeSessionId(input.sessionId);
-  const destination = statePath(baseDirectory, sessionId);
-  const previous = await readState(destination);
-  const phase = requiredText(input.phase, "phase").toLowerCase();
-  if (!PHASES.has(phase)) throw new Error(`phase must be one of: ${[...PHASES].join(", ")}`);
-  const mode = optionalText(input.mode, "mode")?.toLowerCase() ?? previous?.mode ?? "guided";
-  if (!MODES.has(mode)) throw new Error(`mode must be one of: ${[...MODES].join(", ")}`);
+  let sessionId;
+  let destination;
+  let state;
+  try {
+    sessionId = safeSessionId(input.sessionId);
+    destination = statePath(baseDirectory, sessionId);
+    const previous = await readState(destination);
+    const phase = requiredText(input.phase, "phase").toLowerCase();
+    if (!PHASES.has(phase)) throw new Error(`phase must be one of: ${[...PHASES].join(", ")}`);
+    const mode = optionalText(input.mode, "mode")?.toLowerCase() ?? previous?.mode ?? "guided";
+    if (!MODES.has(mode)) throw new Error(`mode must be one of: ${[...MODES].join(", ")}`);
+    const incomingEvidence = objectValue(input.evidence, "evidence");
 
-  const now = new Date().toISOString();
-  const state = {
-    schemaVersion: 2,
-    sessionId,
-    topic: requiredText(input.topic, "topic"),
-    goal: requiredText(input.goal, "goal"),
-    phase,
-    mode,
-    notebookPath: optionalText(input.notebookPath, "notebookPath"),
-    route: textList(input.route, "route") ?? [],
-    secured: textList(input.secured, "secured") ?? [],
-    gaps: textList(input.gaps, "gaps") ?? [],
-    misconceptions: misconceptionList(input.misconceptions) ?? previous?.misconceptions ?? [],
-    evidence: objectValue(input.evidence, "evidence") ?? previous?.evidence ?? {},
-    routeExtensions: routeExtensionList(input.routeExtensions) ?? previous?.routeExtensions ?? [],
-    currentStep: optionalText(input.currentStep, "currentStep"),
-    nextStep: requiredText(input.nextStep, "nextStep"),
-    learnerContext: optionalText(input.learnerContext, "learnerContext"),
-    lastCheckpoint: input.lastCheckpoint ?? previous?.lastCheckpoint,
-    createdAt: previous?.createdAt ?? now,
-    updatedAt: now,
-    revision: (previous?.revision ?? 0) + 1,
-  };
+    const now = new Date().toISOString();
+    state = {
+      schemaVersion: 2,
+      sessionId,
+      topic: requiredText(input.topic, "topic"),
+      goal: requiredText(input.goal, "goal"),
+      phase,
+      mode,
+      notebookPath: optionalText(input.notebookPath, "notebookPath") ?? previous?.notebookPath,
+      route: textList(input.route, "route") ?? previous?.route ?? [],
+      secured: textList(input.secured, "secured") ?? previous?.secured ?? [],
+      gaps: textList(input.gaps, "gaps") ?? previous?.gaps ?? [],
+      misconceptions: misconceptionList(input.misconceptions) ?? previous?.misconceptions ?? [],
+      evidence: incomingEvidence
+        ? { ...(previous?.evidence ?? {}), ...incomingEvidence }
+        : (previous?.evidence ?? {}),
+      routeExtensions: routeExtensionList(input.routeExtensions) ?? previous?.routeExtensions ?? [],
+      currentStep: optionalText(input.currentStep, "currentStep") ?? previous?.currentStep,
+      nextStep: requiredText(input.nextStep, "nextStep"),
+      learnerContext: optionalText(input.learnerContext, "learnerContext") ?? previous?.learnerContext,
+      lastCheckpoint: input.lastCheckpoint ?? previous?.lastCheckpoint,
+      createdAt: previous?.createdAt ?? now,
+      updatedAt: now,
+      revision: (previous?.revision ?? 0) + 1,
+    };
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)}; learning state was not changed`);
+  }
 
   await mkdir(dirname(destination), { recursive: true });
   const temporary = `${destination}.${process.pid}.tmp`;
@@ -383,6 +393,15 @@ function estimateReviewMinutes(format) {
   return REVIEW_MINUTES[format] ?? 3;
 }
 
+function repairAllowance(item) {
+  let minutes = 0;
+  if (item.lastErrorKind === "misconception") minutes += 5;
+  else if (item.lastErrorKind) minutes += 3;
+  if (item.lastOutcome === "needs-repair" || item.lastOutcome === "knowledge-gap") minutes += 2;
+  if (item.masteryLevel === "recognized") minutes += 2;
+  return minutes;
+}
+
 function suggestedReviewFormat(item) {
   if (item.masteryLevel === "transferred") return "free-recall";
   if (item.masteryLevel === "applied") return "transfer";
@@ -446,11 +465,15 @@ export async function buildReviewPlan(baseDirectory, input = {}) {
   let estimatedMinutes = 0;
   for (const item of candidate) {
     const suggestedFormat = suggestedReviewFormat(item);
-    const itemMinutes = estimateReviewMinutes(suggestedFormat);
+    const baseMinutes = estimateReviewMinutes(suggestedFormat);
+    const allowance = repairAllowance(item);
+    const itemMinutes = baseMinutes + allowance;
     if (minutes !== undefined && plan.length > 0 && estimatedMinutes + itemMinutes > minutes) continue;
     plan.push({
       ...item,
       suggestedFormat,
+      baseMinutes,
+      repairAllowance: allowance,
       estimatedMinutes: itemMinutes,
       reason: reviewReason(item, asOfDate),
     });
@@ -564,6 +587,8 @@ export async function recordCheckpointAssessment(baseDirectory, input, assessmen
     ?? securedConnection
     ?? input.currentStep
     ?? previous.currentStep;
+  const misconceptionConcept = optionalText(input.misconceptionConcept, "misconceptionConcept");
+  const repairConcept = misconceptionConcept ?? evidenceConcept;
   const evidence = { ...(previous.evidence ?? {}) };
   const now = new Date().toISOString();
   if (evidenceConcept) {
@@ -612,7 +637,7 @@ export async function recordCheckpointAssessment(baseDirectory, input, assessmen
   let misconceptions = [...(previous.misconceptions ?? [])];
   if (input.misconception) {
     misconceptions.push({
-      concept: evidenceConcept ?? input.currentStep ?? "unassigned",
+      concept: misconceptionConcept ?? evidenceConcept ?? input.currentStep ?? "unassigned",
       wrongModel: requiredText(input.misconception, "misconception"),
       correction: optionalText(input.misconceptionCorrection, "misconceptionCorrection"),
       sourceRef,
@@ -620,12 +645,22 @@ export async function recordCheckpointAssessment(baseDirectory, input, assessmen
       createdAt: now,
     });
   }
-  if (input.misconceptionRepaired === true && evidenceConcept) {
-    misconceptions = misconceptions.map((entry) => (
-      entry.concept === evidenceConcept && entry.repaired !== true
-        ? { ...entry, repaired: true, repairedAt: now }
-        : entry
-    ));
+  let misconceptionRepair;
+  if (input.misconceptionRepaired === true) {
+    let applied = 0;
+    misconceptions = misconceptions.map((entry) => {
+      if (entry.concept !== repairConcept || entry.repaired === true) return entry;
+      applied += 1;
+      return { ...entry, repaired: true, repairedAt: now };
+    });
+    misconceptionRepair = {
+      requested: true,
+      concept: repairConcept ?? null,
+      applied,
+      warning: applied === 0
+        ? `no unresolved misconception matched '${repairConcept ?? "undefined"}'`
+        : undefined,
+    };
   }
 
   return saveLearningState(baseDirectory, {
@@ -648,6 +683,7 @@ export async function recordCheckpointAssessment(baseDirectory, input, assessmen
       hintLevel,
       latencyMs,
       note: assessment.note,
+      misconceptionRepair,
       assessedAt: now,
     },
   });

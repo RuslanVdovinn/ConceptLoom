@@ -77,18 +77,20 @@ The shared method lives in `shared/coaching-reference.md`. Directories under `ad
 | Tool | Purpose |
 |---|---|
 | `loom_frame_checkpoint` | Validate and shuffle a question without returning its answer. |
-| `loom_assess_checkpoint` | Grade a response and reveal the rationale. |
+| `loom_assess_checkpoint` | Grade a response, persist evidence, and return a compact recommendation. |
 | `loom_start_notebook` | Create or open a Markdown notebook. |
 | `loom_add_note` | Append a useful learning event. |
-| `loom_save_learning_state` | Persist the route and exact resume point. |
+| `loom_save_learning_state` | Persist the route and exact resume point; evidence merges by concept key. |
 | `loom_load_learning_state` | Restore a session as `summary`, `full`, or `evidence`. |
 | `loom_list_due_reviews` | Find every concept due for delayed retrieval. |
-| `loom_review_plan` | Build a short interleaved review plan. |
+| `loom_review_plan` | Build a review plan with a time and repair buffer. |
 | `loom_progress_report` | Summarize mastery, calibration, weak dimensions, and errors. |
 | `loom_show_relation_map` | Return a Mermaid block for the conversation. |
 | `loom_show_text_diagram` | Return a monospace diagram for the terminal. |
 
 `loom_load_learning_state` returns the full state by default. `view: "summary"` returns the route, current step, `nextStep`, counts, mastery, and `dueCount` without the evidence ledger—enough to resume. `view: "evidence"` returns only the evidence and misconception ledger for targeted diagnosis.
+
+`loom_assess_checkpoint` returns a compact result by default: outcome, `masteryLevel`, `closure`, `recommendedNext`, `nextStep`, and the revision, without the full state. Request the full state with `includeLearningState: true`. `loom_save_learning_state` merges `evidence` by concept name, so a caller may send only changed concepts; omitted lists, `notebookPath`, `currentStep`, and `learnerContext` are preserved. A validation error writes no file and says the state was not changed.
 
 ### Checkpoints
 

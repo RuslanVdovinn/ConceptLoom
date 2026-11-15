@@ -31,6 +31,7 @@ It works with topics you explore from scratch and with your own books, courses, 
 - Warn about weak checkpoint questions before showing them.
 - Keep concise Markdown learning notes between sessions.
 - Resume from a compact summary without loading the entire evidence ledger.
+- Save partial evidence safely and get compact assessment results by default.
 - Use the same workflow in Codex, Claude Code, OpenCode, and DeepSeek Harness.
 - Show compact text or Mermaid diagrams directly in the conversation.
 

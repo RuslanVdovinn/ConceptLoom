@@ -56,18 +56,20 @@ Concept Loom
 | Инструмент | Назначение |
 |---|---|
 | `loom_frame_checkpoint` | Подготовить и перемешать вопрос без показа ответа. |
-| `loom_assess_checkpoint` | Оценить ответ и вернуть объяснение. |
+| `loom_assess_checkpoint` | Оценить ответ, записать evidence и вернуть компактную рекомендацию. |
 | `loom_start_notebook` | Создать или открыть Markdown-конспект. |
 | `loom_add_note` | Добавить полезное учебное событие. |
-| `loom_save_learning_state` | Сохранить маршрут и точку продолжения. |
+| `loom_save_learning_state` | Сохранить маршрут и точку продолжения; evidence сливается по ключам. |
 | `loom_load_learning_state` | Восстановить занятие: `summary`, `full` или `evidence`. |
 | `loom_list_due_reviews` | Найти все понятия для отложенного повторения. |
-| `loom_review_plan` | Собрать короткий перемешанный план повторения. |
+| `loom_review_plan` | Собрать план повторения с бюджетом и резервом на ремонт. |
 | `loom_progress_report` | Показать mastery, калибровку, слабые измерения и ошибки. |
 | `loom_show_relation_map` | Вернуть Mermaid-блок прямо в разговор. |
 | `loom_show_text_diagram` | Вернуть моноширинную схему для терминала. |
 
 `loom_load_learning_state` по умолчанию отдаёт полное состояние. `view: "summary"` возвращает маршрут, текущий шаг, `nextStep`, счётчики, mastery и `dueCount` без журнала evidence — этого достаточно для продолжения. `view: "evidence"` отдаёт только evidence и журнал заблуждений для точечного разбора.
+
+`loom_assess_checkpoint` по умолчанию возвращает компактный результат: оценку, `masteryLevel`, `closure`, `recommendedNext`, `nextStep` и ревизию, без полного state. Полный state можно запросить через `includeLearningState: true`. `loom_save_learning_state` сливает `evidence` по именам понятий, поэтому можно присылать только изменённые concept'ы; опущенные списки, `notebookPath`, `currentStep` и `learnerContext` сохраняются. При ошибке валидации файл не пишется, и текст ошибки говорит, что состояние не изменено.
 
 ## Проверочные вопросы
 

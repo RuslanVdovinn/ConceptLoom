@@ -16,6 +16,10 @@ All notable changes to Concept Loom are documented here.
 - `loom_review_plan` accepts `minutes` and `sessionId`, estimates each item, and chooses a review format from mastery.
 - `loom_frame_checkpoint` returns `qualityWarnings` for weak choice construction and vague grading criteria.
 - `loom_load_learning_state` accepts `view: "summary" | "full" | "evidence"`; summary returns route, `nextStep`, counts, mastery, and due count without the evidence ledger.
+- `loom_save_learning_state` merges `evidence` by concept key, so partial updates no longer replace the whole ledger; omitted route, secured, gaps, notebook path, current step, and learner context are preserved, and validation errors say the state was not changed.
+- `loom_assess_checkpoint` returns a compact result by default, including `nextStep` and revision; request `includeLearningState: true` for the full state.
+- `misconceptionConcept` selects the exact concept for repair; `misconceptionRepair` reports `applied` and a warning when nothing matched.
+- `loom_review_plan` estimates include a `repairAllowance` and `baseMinutes` for fragile concepts.
 - Optional `sourceRef`, `hintLevel`, and `latencyMs` on assessment; adaptive review intervals shorten after hints or low confidence and lengthen after confident accurate answers.
 - Notebook kinds for open questions, summaries, misconceptions, and sources.
 

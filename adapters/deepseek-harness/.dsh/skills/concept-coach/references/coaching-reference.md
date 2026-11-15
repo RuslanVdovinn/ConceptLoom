@@ -64,7 +64,7 @@ Use this when the learner wants a short daily habit rather than a full lesson.
 
 - Call `loom_review_plan` with `limit` 3–5, a `minutes` budget such as 10, and the current `sessionId` when the sprint should stay on one subject.
 - Take the suggested format unless there is a clear reason to change it; it is chosen from the concept's mastery level.
-- Respect `estimatedMinutes`; if the budget is exhausted, stop the sprint rather than starting another long item.
+- Respect `estimatedMinutes`; it already includes `repairAllowance`, so a fragile concept is budgeted for a repair loop. `baseMinutes` shows the clean estimate. If the budget is exhausted, stop the sprint rather than starting another long item.
 - Interleave topics: do not do five concepts from the same session in a row.
 - No new material. The goal is retrieval, discrimination, and repair.
 - Finish with one short transfer and an exit ticket.
@@ -140,6 +140,8 @@ The assessment also returns `masteryLevel`, `closure`, `recommendedNext`, and a 
 `closure: "provisional"` means the connection is not finished. `closure: "mastered"` is the only state that permits moving on without a further check. `closure: "open"` means repair is required.
 
 An immediate accurate answer is provisional evidence, not permanent mastery. Name the stable concept in `evidenceConcept` so assessment records the format, confidence, hint dependence, demonstrated dimension, error diagnosis, source, and next review date.
+
+The assessment result is compact by default: it includes the outcome, recommendation, `sessionId`, `nextStep`, and revision, but not the full state. Pass `includeLearningState: true` only when the complete state is genuinely needed.
 
 Validation errors in `loom_assess_checkpoint` do not consume the token; a valid assessment does. If persistence fails after a valid assessment, create a fresh checkpoint rather than retrying the old token.
 
@@ -221,6 +223,8 @@ When an error reveals a wrong model:
 5. re-test with a similar but not identical task;
 6. mark the misconception repaired only after the corrected attempt.
 
+Pass `misconceptionConcept` with the exact concept name used when the misconception was recorded. If the repair does not match, the assessment returns `misconceptionRepair.applied: 0` and a `warning`; do not silently ignore it. The default is `evidenceConcept`, but it is often not the same string as the misconception's concept.
+
 ## Terminal diagrams
 
 Use a diagram only when sequence, dependency, or structure is easier to inspect visually. Diagrams must be readable directly in the conversation; do not create image files.
@@ -254,8 +258,9 @@ The chat is temporary; the workspace is the durable memory.
 - Immediately after route approval, call `loom_save_learning_state` with `phase=build` and the first teaching action in `nextStep`. Only then begin teaching.
 - For a knowledge checkpoint, call `loom_assess_checkpoint` immediately after the answer and provide `sessionId`, `currentStep`, and the exact `nextStep`. Assessment and progress persistence happen in the same tool call.
 - For every other learner response, call `loom_save_learning_state` before continuing. Also save before any pause or session end.
-- Save the complete route and complete secured/gap/misconception lists on every update, plus the exact `nextStep`. Do not save only the latest change.
-- Preserve the complete evidence ledger and route extensions on updates. Treat `secured` as a compatibility summary; use `masteryLevel` and the dimensions to decide whether recognition, recall, application, and transfer have actually been demonstrated.
+- Save the complete route, secured list, gap list, and misconception list when you change them, plus the exact `nextStep`. Omitted lists are preserved; send `[]` to clear one explicitly.
+- Evidence is merged by concept key. You may send only the concepts that changed; omitted concepts, route extensions, notebook path, current step, and learner context are preserved. Treat `secured` as a compatibility summary; use `masteryLevel` and the dimensions to decide whether recognition, recall, application, and transfer have actually been demonstrated.
+- If validation fails, no state file is written and the error says so. A successful save returns the new revision.
 - When the learner says “continue”, “resume”, or refers to an earlier lesson, call `loom_load_learning_state` with `view: "summary"` before teaching anything. With no explicit session id, inspect the latest summary and available session list.
 - Use `view: "full"` only when the next teaching action needs the complete state, and `view: "evidence"` when diagnosing a specific concept or misconception. Do not fetch the full ledger just to read `nextStep`.
 - At resume, call `loom_review_plan` before reteaching saved material. Briefly tell the learner what was restored and continue from `nextStep`.
